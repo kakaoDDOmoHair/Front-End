@@ -3,14 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "app/(tabs)/staff/notification.styles.ts"
-  ]
+  "include": ["**/*.ts", "**/*.tsx", "app/(tabs)/staff/notification.styles.ts"]
 }
