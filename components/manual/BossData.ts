@@ -7,7 +7,6 @@ export interface Step {
 }
 
 export interface ManualItem {
-  // 백엔드 Postman 응답에서 확인된 manualId를 사용합니다.
   manualId: number;
   category: string;
   title: string;
@@ -15,7 +14,6 @@ export interface ManualItem {
   steps?: Step[];
 }
 
-// 초기 더미 데이터도 인터페이스에 맞춰 업데이트합니다.
 export const BOSS_MANUAL_LIST: ManualItem[] = [
   {
     manualId: 1,

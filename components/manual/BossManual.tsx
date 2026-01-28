@@ -67,9 +67,7 @@ export const BossManual = ({
           <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>상세 설명</Text>
 
-            {/* 🌟 [디자인 수정] 단순 텍스트가 아니라 Form과 똑같은 박스 스타일로 감싸줍니다 */}
             {selectedManual.steps && selectedManual.steps.length > 0 ? (
-              // 1. Steps 배열이 살아있는 경우 (가장 이상적)
               selectedManual.steps.map((step, index) => (
                 <View key={index} style={styles.stepInputBox}>
                   <Text style={styles.stepLabel}>Step {step.stepNumber}</Text>
@@ -90,7 +88,6 @@ export const BossManual = ({
                 </View>
               ))
             ) : (
-              // 2. content 문자열만 있는 경우 -> 가짜 Step 1 박스를 만들어 예쁘게 보여줌
               <View style={styles.stepInputBox}>
                 <Text style={styles.stepLabel}>Step 1</Text>
                 <Text

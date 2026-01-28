@@ -105,9 +105,7 @@ export default function ManualScreen() {
     }
   }, []);
 
-  // 🌟 4. 상세 조회 (클릭 시 content 가져와서 파싱)
   const handleSelectManual = async (item: ManualItem | null) => {
-    // 닫기(null) 처리
     if (!item) {
       setSelectedManual(null);
       return;

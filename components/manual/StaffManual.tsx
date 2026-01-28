@@ -12,8 +12,6 @@ import {
 } from "react-native";
 import { styles } from "../../styles/tabs/staff/Manual";
 import { ManualItem } from "./StaffData";
-// 🚨 [수정 1] 가짜 데이터(STAFF_MANUAL_LIST) import 삭제
-
 interface Props {
   manualList: ManualItem[]; // 🚨 [수정 2] 부모한테서 리스트를 받겠다고 선언
   selectedManual: ManualItem | null;
@@ -71,7 +69,9 @@ export const StaffManual = ({
           ))}
 
           {(!selectedManual.steps || selectedManual.steps.length === 0) && (
-            <Text style={{ marginTop: 20, textAlign: "center", color: "#999" }}>
+            <Text
+              style={{ marginTop: 20, textAlign: "center", color: "#AFAFAF" }}
+            >
               상세 내용이 없습니다.
             </Text>
           )}

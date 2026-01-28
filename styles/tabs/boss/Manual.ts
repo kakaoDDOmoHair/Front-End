@@ -101,7 +101,6 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  // 기존 스타일에 아래 항목들을 추가하거나 교체하세요.
   inputLabel: {
     fontSize: 25,
     fontWeight: "bold",
