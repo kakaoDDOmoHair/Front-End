@@ -1,0 +1,104 @@
+0000000000000000000000000000000000000000 31e2585e75900fb71566569ad56c2c5a727ad45e suerte223 <rhwldns0322@gmail.com> 1768812757 +0900	clone: from https://github.com/kakaoDDOmoHair/Frontend.git
+31e2585e75900fb71566569ad56c2c5a727ad45e 31e2585e75900fb71566569ad56c2c5a727ad45e suerte223 <rhwldns0322@gmail.com> 1768812919 +0900	checkout: moving from main to develop
+31e2585e75900fb71566569ad56c2c5a727ad45e 31e2585e75900fb71566569ad56c2c5a727ad45e suerte223 <rhwldns0322@gmail.com> 1768867887 +0900	checkout: moving from develop to registration
+31e2585e75900fb71566569ad56c2c5a727ad45e b21222fc407f437ae18caff0586def9683cebdb0 suerte223 <rhwldns0322@gmail.com> 1768883802 +0900	commit: 매장 등록 페이지 완료
+b21222fc407f437ae18caff0586def9683cebdb0 31e2585e75900fb71566569ad56c2c5a727ad45e suerte223 <rhwldns0322@gmail.com> 1768883820 +0900	checkout: moving from registration to develop
+31e2585e75900fb71566569ad56c2c5a727ad45e 140f1d31cbdb7037e8cd1d88f075dffd3d72e8f1 suerte223 <rhwldns0322@gmail.com> 1768883861 +0900	pull origin develop: Fast-forward
+140f1d31cbdb7037e8cd1d88f075dffd3d72e8f1 b21222fc407f437ae18caff0586def9683cebdb0 suerte223 <rhwldns0322@gmail.com> 1768883881 +0900	checkout: moving from develop to registration
+b21222fc407f437ae18caff0586def9683cebdb0 140f1d31cbdb7037e8cd1d88f075dffd3d72e8f1 suerte223 <rhwldns0322@gmail.com> 1768884625 +0900	checkout: moving from registration to develop
+140f1d31cbdb7037e8cd1d88f075dffd3d72e8f1 0b7a02d541cef5caa49871e8e15a116c1c236835 suerte223 <rhwldns0322@gmail.com> 1768884932 +0900	pull origin: Fast-forward
+0b7a02d541cef5caa49871e8e15a116c1c236835 0b7a02d541cef5caa49871e8e15a116c1c236835 suerte223 <rhwldns0322@gmail.com> 1768885037 +0900	checkout: moving from develop to schedule
+0b7a02d541cef5caa49871e8e15a116c1c236835 0b7a02d541cef5caa49871e8e15a116c1c236835 suerte223 <rhwldns0322@gmail.com> 1768894475 +0900	checkout: moving from schedule to develop
+0b7a02d541cef5caa49871e8e15a116c1c236835 0b7a02d541cef5caa49871e8e15a116c1c236835 suerte223 <rhwldns0322@gmail.com> 1768894538 +0900	reset: moving to HEAD
+0b7a02d541cef5caa49871e8e15a116c1c236835 0e7bdec9c80a6f700c93ea158704165576a8a926 suerte223 <rhwldns0322@gmail.com> 1768894545 +0900	pull origin develop: Fast-forward
+0e7bdec9c80a6f700c93ea158704165576a8a926 0e7bdec9c80a6f700c93ea158704165576a8a926 suerte223 <rhwldns0322@gmail.com> 1768894959 +0900	reset: moving to HEAD
+0e7bdec9c80a6f700c93ea158704165576a8a926 0e7bdec9c80a6f700c93ea158704165576a8a926 suerte223 <rhwldns0322@gmail.com> 1768894977 +0900	reset: moving to origin/develop
+0e7bdec9c80a6f700c93ea158704165576a8a926 0e7bdec9c80a6f700c93ea158704165576a8a926 suerte223 <rhwldns0322@gmail.com> 1768955068 +0900	reset: moving to HEAD
+0e7bdec9c80a6f700c93ea158704165576a8a926 7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 suerte223 <rhwldns0322@gmail.com> 1768955075 +0900	pull origin develop: Fast-forward
+7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 suerte223 <rhwldns0322@gmail.com> 1768971119 +0900	reset: moving to HEAD
+7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 0b7a02d541cef5caa49871e8e15a116c1c236835 suerte223 <rhwldns0322@gmail.com> 1768971126 +0900	checkout: moving from develop to schedule
+0b7a02d541cef5caa49871e8e15a116c1c236835 9f183e48c3bced317613c812c098854a3c9cc377 suerte223 <rhwldns0322@gmail.com> 1768971259 +0900	commit: schedule 사장님 알바생 페이지 완료
+9f183e48c3bced317613c812c098854a3c9cc377 7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 suerte223 <rhwldns0322@gmail.com> 1768971286 +0900	checkout: moving from schedule to develop
+7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 9f183e48c3bced317613c812c098854a3c9cc377 suerte223 <rhwldns0322@gmail.com> 1768971380 +0900	checkout: moving from develop to schedule
+9f183e48c3bced317613c812c098854a3c9cc377 7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 suerte223 <rhwldns0322@gmail.com> 1768972397 +0900	checkout: moving from schedule to develop
+7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 suerte223 <rhwldns0322@gmail.com> 1768972412 +0900	reset: moving to HEAD
+7ebd4bc8c2ae3ae8cdca864a822e81d1f73aeda8 77a3bcb6d2c7aaf82ff289e3ea8a7cafb9f8d4b0 suerte223 <rhwldns0322@gmail.com> 1768972427 +0900	pull origin develop: Fast-forward
+77a3bcb6d2c7aaf82ff289e3ea8a7cafb9f8d4b0 77a3bcb6d2c7aaf82ff289e3ea8a7cafb9f8d4b0 suerte223 <rhwldns0322@gmail.com> 1768983957 +0900	reset: moving to HEAD
+77a3bcb6d2c7aaf82ff289e3ea8a7cafb9f8d4b0 692f8f22ba539a027b0c24a454941564f88237b7 suerte223 <rhwldns0322@gmail.com> 1768983975 +0900	pull origin develop: Fast-forward
+692f8f22ba539a027b0c24a454941564f88237b7 692f8f22ba539a027b0c24a454941564f88237b7 suerte223 <rhwldns0322@gmail.com> 1768984006 +0900	checkout: moving from develop to pay
+692f8f22ba539a027b0c24a454941564f88237b7 692f8f22ba539a027b0c24a454941564f88237b7 suerte223 <rhwldns0322@gmail.com> 1769039923 +0900	checkout: moving from pay to develop
+692f8f22ba539a027b0c24a454941564f88237b7 692f8f22ba539a027b0c24a454941564f88237b7 suerte223 <rhwldns0322@gmail.com> 1769043909 +0900	checkout: moving from develop to pay
+692f8f22ba539a027b0c24a454941564f88237b7 5d09b85871e703f3cd70e4372ff45b6c272e5ccb suerte223 <rhwldns0322@gmail.com> 1769043974 +0900	commit: 급여 정산 페이지 사장/알바 완료
+5d09b85871e703f3cd70e4372ff45b6c272e5ccb 692f8f22ba539a027b0c24a454941564f88237b7 suerte223 <rhwldns0322@gmail.com> 1769048271 +0900	checkout: moving from pay to develop
+692f8f22ba539a027b0c24a454941564f88237b7 692f8f22ba539a027b0c24a454941564f88237b7 suerte223 <rhwldns0322@gmail.com> 1769048277 +0900	reset: moving to HEAD
+692f8f22ba539a027b0c24a454941564f88237b7 6333168fe7d9c464319dcf44a4ada3cac3cf40be suerte223 <rhwldns0322@gmail.com> 1769048379 +0900	pull origin develop: Fast-forward
+6333168fe7d9c464319dcf44a4ada3cac3cf40be 6333168fe7d9c464319dcf44a4ada3cac3cf40be suerte223 <rhwldns0322@gmail.com> 1769067559 +0900	reset: moving to HEAD
+6333168fe7d9c464319dcf44a4ada3cac3cf40be 6333168fe7d9c464319dcf44a4ada3cac3cf40be suerte223 <rhwldns0322@gmail.com> 1769069964 +0900	reset: moving to HEAD
+6333168fe7d9c464319dcf44a4ada3cac3cf40be 1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 suerte223 <rhwldns0322@gmail.com> 1769070010 +0900	pull origin develop: Fast-forward
+1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 suerte223 <rhwldns0322@gmail.com> 1769126804 +0900	reset: moving to HEAD
+1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 suerte223 <rhwldns0322@gmail.com> 1769126813 +0900	checkout: moving from develop to api
+1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 01861d6a9707f02b6a661ea1f8df138ea04dd4a5 suerte223 <rhwldns0322@gmail.com> 1769126870 +0900	commit: api base_url 입력
+01861d6a9707f02b6a661ea1f8df138ea04dd4a5 8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 suerte223 <rhwldns0322@gmail.com> 1769127109 +0900	commit: api base_url 입력
+8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 suerte223 <rhwldns0322@gmail.com> 1769127435 +0900	reset: moving to HEAD
+8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 suerte223 <rhwldns0322@gmail.com> 1769127445 +0900	checkout: moving from api to develop
+1a1c3c4ed6c26ef1cd8efb4143009d68fd6ef538 0f809624a543970f962b0ce728792754802f0ed9 suerte223 <rhwldns0322@gmail.com> 1769127544 +0900	commit: 서버의 api.ts 파일 유지
+0f809624a543970f962b0ce728792754802f0ed9 785b7f1cfb1880445757477347e5ef5d85c5e320 suerte223 <rhwldns0322@gmail.com> 1769127778 +0900	commit (merge): 충돌 해결: api.ts 복구 및 SignUp.tsx 반영
+785b7f1cfb1880445757477347e5ef5d85c5e320 a96399100e5b58b1f542464049978e204f38fcc2 suerte223 <rhwldns0322@gmail.com> 1769127925 +0900	commit: 충돌 해결: stash와 develop 브랜치 합치기
+a96399100e5b58b1f542464049978e204f38fcc2 8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 suerte223 <rhwldns0322@gmail.com> 1769127937 +0900	checkout: moving from develop to api
+8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 a96399100e5b58b1f542464049978e204f38fcc2 suerte223 <rhwldns0322@gmail.com> 1769127945 +0900	checkout: moving from api to develop
+a96399100e5b58b1f542464049978e204f38fcc2 8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 suerte223 <rhwldns0322@gmail.com> 1769128191 +0900	checkout: moving from develop to api
+8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 suerte223 <rhwldns0322@gmail.com> 1769128402 +0900	reset: moving to HEAD
+8762c6f8aaf810e1badee0e3c9fbe7083c7b4084 a96399100e5b58b1f542464049978e204f38fcc2 suerte223 <rhwldns0322@gmail.com> 1769128411 +0900	checkout: moving from api to develop
+a96399100e5b58b1f542464049978e204f38fcc2 6c09889279e1c19fe67d1d7ccf2fc56765af68e3 suerte223 <rhwldns0322@gmail.com> 1769128609 +0900	commit: 회원가입 페이지 작업 내용 복구 및 충돌 해결
+6c09889279e1c19fe67d1d7ccf2fc56765af68e3 6c09889279e1c19fe67d1d7ccf2fc56765af68e3 suerte223 <rhwldns0322@gmail.com> 1769128647 +0900	checkout: moving from develop to login
+6c09889279e1c19fe67d1d7ccf2fc56765af68e3 2960b26d78a23a46d66958bc777d7d7f88fdeb1f suerte223 <rhwldns0322@gmail.com> 1769128772 +0900	commit: 로그인, 회원가입, id찾기 api 완료
+2960b26d78a23a46d66958bc777d7d7f88fdeb1f 6c09889279e1c19fe67d1d7ccf2fc56765af68e3 suerte223 <rhwldns0322@gmail.com> 1769129027 +0900	checkout: moving from login to develop
+6c09889279e1c19fe67d1d7ccf2fc56765af68e3 c1881f93d76ba57aee07a3cd47d6c6107188cea6 suerte223 <rhwldns0322@gmail.com> 1769129035 +0900	pull origin develop: Fast-forward
+c1881f93d76ba57aee07a3cd47d6c6107188cea6 2960b26d78a23a46d66958bc777d7d7f88fdeb1f suerte223 <rhwldns0322@gmail.com> 1769148450 +0900	checkout: moving from develop to login
+2960b26d78a23a46d66958bc777d7d7f88fdeb1f 3326d5c37f9a243324725bb5b947abc4ef9d06f2 suerte223 <rhwldns0322@gmail.com> 1769148538 +0900	commit: 로그인 회원가입 아이디찾기 비밀번호 찾기 완료
+3326d5c37f9a243324725bb5b947abc4ef9d06f2 c1881f93d76ba57aee07a3cd47d6c6107188cea6 suerte223 <rhwldns0322@gmail.com> 1769148719 +0900	checkout: moving from login to develop
+c1881f93d76ba57aee07a3cd47d6c6107188cea6 b3f746a3aa1b3d63b1e098d06602e01d9272f5cb suerte223 <rhwldns0322@gmail.com> 1769148733 +0900	pull origin develop: Fast-forward
+b3f746a3aa1b3d63b1e098d06602e01d9272f5cb b3f746a3aa1b3d63b1e098d06602e01d9272f5cb suerte223 <rhwldns0322@gmail.com> 1769149800 +0900	reset: moving to HEAD
+b3f746a3aa1b3d63b1e098d06602e01d9272f5cb 9f183e48c3bced317613c812c098854a3c9cc377 suerte223 <rhwldns0322@gmail.com> 1769149806 +0900	checkout: moving from develop to schedule
+9f183e48c3bced317613c812c098854a3c9cc377 b3f746a3aa1b3d63b1e098d06602e01d9272f5cb suerte223 <rhwldns0322@gmail.com> 1769149885 +0900	checkout: moving from schedule to develop
+b3f746a3aa1b3d63b1e098d06602e01d9272f5cb 2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 suerte223 <rhwldns0322@gmail.com> 1769150456 +0900	commit: 없어진 파일 다시올려요
+2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 suerte223 <rhwldns0322@gmail.com> 1769150911 +0900	reset: moving to HEAD
+2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 31e2585e75900fb71566569ad56c2c5a727ad45e suerte223 <rhwldns0322@gmail.com> 1769150911 +0900	checkout: moving from develop to main
+31e2585e75900fb71566569ad56c2c5a727ad45e 2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 suerte223 <rhwldns0322@gmail.com> 1769150920 +0900	checkout: moving from main to develop
+2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 edb23a67d20f3b573b55d1912976625a4cd0f859 suerte223 <rhwldns0322@gmail.com> 1769151037 +0900	checkout: moving from develop to main
+edb23a67d20f3b573b55d1912976625a4cd0f859 2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 suerte223 <rhwldns0322@gmail.com> 1769151041 +0900	checkout: moving from main to develop
+2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 3326d5c37f9a243324725bb5b947abc4ef9d06f2 suerte223 <rhwldns0322@gmail.com> 1769151112 +0900	checkout: moving from develop to login
+3326d5c37f9a243324725bb5b947abc4ef9d06f2 1b714224d3e7d3b9e62ddeeec6b6213dc9efe7b9 suerte223 <rhwldns0322@gmail.com> 1769151141 +0900	commit: 경로 오류 수정 완료
+1b714224d3e7d3b9e62ddeeec6b6213dc9efe7b9 1b714224d3e7d3b9e62ddeeec6b6213dc9efe7b9 suerte223 <rhwldns0322@gmail.com> 1769151577 +0900	reset: moving to HEAD
+1b714224d3e7d3b9e62ddeeec6b6213dc9efe7b9 2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 suerte223 <rhwldns0322@gmail.com> 1769151579 +0900	checkout: moving from login to develop
+2c12e546bdc3885eca9c2e02e54e1f445c43f2f9 2892a49b2abb20fea88b0d5cedabd96563dca50f suerte223 <rhwldns0322@gmail.com> 1769152612 +0900	commit: 로그인 충돌 해결
+2892a49b2abb20fea88b0d5cedabd96563dca50f 2892a49b2abb20fea88b0d5cedabd96563dca50f suerte223 <rhwldns0322@gmail.com> 1769393480 +0900	reset: moving to HEAD
+2892a49b2abb20fea88b0d5cedabd96563dca50f 2892a49b2abb20fea88b0d5cedabd96563dca50f suerte223 <rhwldns0322@gmail.com> 1769393508 +0900	reset: moving to HEAD
+2892a49b2abb20fea88b0d5cedabd96563dca50f 1b714224d3e7d3b9e62ddeeec6b6213dc9efe7b9 suerte223 <rhwldns0322@gmail.com> 1769393512 +0900	checkout: moving from develop to login
+1b714224d3e7d3b9e62ddeeec6b6213dc9efe7b9 8affd7a8a563a6f471e0e60d8a7e46f64a765e6b suerte223 <rhwldns0322@gmail.com> 1769393675 +0900	commit: 폴더 대소문자 경로 수정 및 이름 변경
+8affd7a8a563a6f471e0e60d8a7e46f64a765e6b 2892a49b2abb20fea88b0d5cedabd96563dca50f suerte223 <rhwldns0322@gmail.com> 1769393783 +0900	checkout: moving from login to develop
+2892a49b2abb20fea88b0d5cedabd96563dca50f 07312303f64bb3cbf667ac9be701b1055e9ac5cd suerte223 <rhwldns0322@gmail.com> 1769394860 +0900	commit: 회원가입 역할 수정
+07312303f64bb3cbf667ac9be701b1055e9ac5cd 07312303f64bb3cbf667ac9be701b1055e9ac5cd suerte223 <rhwldns0322@gmail.com> 1769394969 +0900	reset: moving to HEAD
+07312303f64bb3cbf667ac9be701b1055e9ac5cd f830f25954fee0b16f7e79f0006bf923380f4b52 suerte223 <rhwldns0322@gmail.com> 1769395006 +0900	pull --rebase origin develop (start): checkout f830f25954fee0b16f7e79f0006bf923380f4b52
+f830f25954fee0b16f7e79f0006bf923380f4b52 07312303f64bb3cbf667ac9be701b1055e9ac5cd suerte223 <rhwldns0322@gmail.com> 1769395149 +0900	rebase (abort): returning to refs/heads/develop
+07312303f64bb3cbf667ac9be701b1055e9ac5cd 174cd99ae86fa83866078b89a952c1b8c82383e4 suerte223 <rhwldns0322@gmail.com> 1769395239 +0900	commit: 회원가입 다시 올립니다
+174cd99ae86fa83866078b89a952c1b8c82383e4 e5380c722939e82f2ad35bbfd1b82f8f56dd46cc suerte223 <rhwldns0322@gmail.com> 1769395369 +0900	commit (merge): Fix merge conflicts in Login and SignUp
+e5380c722939e82f2ad35bbfd1b82f8f56dd46cc e5380c722939e82f2ad35bbfd1b82f8f56dd46cc suerte223 <rhwldns0322@gmail.com> 1769417041 +0900	reset: moving to HEAD
+e5380c722939e82f2ad35bbfd1b82f8f56dd46cc 96427f91714b3f155970e9402a549177683d66d9 suerte223 <rhwldns0322@gmail.com> 1769417129 +0900	commit (merge): Merge branch 'develop' of https://github.com/kakaoDDOmoHair/Frontend into develop
+96427f91714b3f155970e9402a549177683d66d9 96427f91714b3f155970e9402a549177683d66d9 suerte223 <rhwldns0322@gmail.com> 1769488085 +0900	reset: moving to HEAD
+96427f91714b3f155970e9402a549177683d66d9 96427f91714b3f155970e9402a549177683d66d9 suerte223 <rhwldns0322@gmail.com> 1769488169 +0900	reset: moving to HEAD
+96427f91714b3f155970e9402a549177683d66d9 96427f91714b3f155970e9402a549177683d66d9 suerte223 <rhwldns0322@gmail.com> 1769488221 +0900	reset: moving to HEAD
+96427f91714b3f155970e9402a549177683d66d9 bb73323e2b456eb8b5b49e22c138b9574394f3fe suerte223 <rhwldns0322@gmail.com> 1769488453 +0900	commit: 브랜치 충돌로 그냥 올립니다
+bb73323e2b456eb8b5b49e22c138b9574394f3fe bb73323e2b456eb8b5b49e22c138b9574394f3fe suerte223 <rhwldns0322@gmail.com> 1769488520 +0900	checkout: moving from develop to test
+bb73323e2b456eb8b5b49e22c138b9574394f3fe 84897c7bfba045658b310e5be3c815c5dd7d9161 suerte223 <rhwldns0322@gmail.com> 1769494247 +0900	commit: 알바생 매장 등록 완료!
+84897c7bfba045658b310e5be3c815c5dd7d9161 20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c suerte223 <rhwldns0322@gmail.com> 1769495863 +0900	commit: 사장님 매장 등록 api 연결 완료
+20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c 20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c suerte223 <rhwldns0322@gmail.com> 1769496093 +0900	reset: moving to HEAD
+20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c bb73323e2b456eb8b5b49e22c138b9574394f3fe suerte223 <rhwldns0322@gmail.com> 1769496100 +0900	checkout: moving from test to develop
+bb73323e2b456eb8b5b49e22c138b9574394f3fe e1c8e023803253df0fb9a8c772bb9f0659afb2c7 suerte223 <rhwldns0322@gmail.com> 1769496105 +0900	pull origin develop: Fast-forward
+e1c8e023803253df0fb9a8c772bb9f0659afb2c7 20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c suerte223 <rhwldns0322@gmail.com> 1769496111 +0900	checkout: moving from develop to test
+20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c 20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c suerte223 <rhwldns0322@gmail.com> 1769496157 +0900	reset: moving to HEAD
+20051a3431ba66b9b3c4f1082ffbf6f1f9f4da9c 317afe7312f05d4fb0a06ecae97c3217b1f75bc0 suerte223 <rhwldns0322@gmail.com> 1769498276 +0900	commit: 로그인 끝
+317afe7312f05d4fb0a06ecae97c3217b1f75bc0 b2b964bb59f616876665381b7b09b5215f04dd6c suerte223 <rhwldns0322@gmail.com> 1769564767 +0900	commit: 로그인
+b2b964bb59f616876665381b7b09b5215f04dd6c e1c8e023803253df0fb9a8c772bb9f0659afb2c7 suerte223 <rhwldns0322@gmail.com> 1769564798 +0900	checkout: moving from test to develop
+e1c8e023803253df0fb9a8c772bb9f0659afb2c7 e1c8e023803253df0fb9a8c772bb9f0659afb2c7 suerte223 <rhwldns0322@gmail.com> 1769564936 +0900	reset: moving to HEAD
+e1c8e023803253df0fb9a8c772bb9f0659afb2c7 222b0c35e773747450b2c5da38be7c2165223167 suerte223 <rhwldns0322@gmail.com> 1769565142 +0900	reset: moving to origin/develop
