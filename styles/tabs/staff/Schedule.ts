@@ -152,7 +152,8 @@ export const styles = StyleSheet.create({
   },
 
   inputField: {
-    marginBottom: 22,
+    marginTop: 25,
+    marginBottom: 5,
   },
   inputItem: {
     width: "45%",
@@ -278,7 +279,8 @@ export const styles = StyleSheet.create({
   categoryGroup: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 25,
+    marginTop: 25,
+    marginBottom: 5,
   },
   categoryBtn: {
     flex: 1,

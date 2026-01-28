@@ -1,87 +1,71 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import CustomDatePicker from "../../../components/common/CustomDatePicker";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
+import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Schedule";
 
-interface Attendance {
-  id: number;
+interface Worker {
   name: string;
-  date: string;
+  userId: number;
+  scheduleId: number;
+}
+
+interface ScheduleItem {
+  day: string;
   time: string;
-  breakTime: string;
-  status: "active" | "late" | "absent" | "none";
-  isPlanned: boolean;
+  startTime?: string;
+  endTime?: string;
+  workers: Worker[];
+}
+
+interface RealTimeStatus {
+  userId: number;
+  name: string;
+  status: "ON" | "OFF" | "LATE" | "ABSENT";
 }
 
 const AttendancePage: React.FC = () => {
-  // --- 상태 관리 ---
+  // --- 1. 상태 관리 ---
   const [showCalendar, setShowCalendar] = useState(false);
-  const [showEditCalendar, setShowEditCalendar] = useState(false);
-  const [selectedDate, setSelectedDate] = useState("2026-01-20");
-  const [breakTime, setBreakTime] = useState("30"); // 초기값 설정
-
-  const [manualData, setManualData] = useState<Attendance[]>([
-    {
-      id: 1,
-      name: "Jun",
-      date: "2026-01-20",
-      time: "12:00 ~ 18:00",
-      breakTime: "30분",
-      status: "active",
-      isPlanned: false,
-    },
-    {
-      id: 2,
-      name: "Hong",
-      date: "2026-01-20",
-      time: "12:05 ~ 18:00",
-      breakTime: "60분",
-      status: "late",
-      isPlanned: false,
-    },
-    {
-      id: 3,
-      name: "Crong",
-      date: "2026-01-20",
-      time: "결근",
-      breakTime: "0분",
-      status: "absent",
-      isPlanned: false,
-    },
-    {
-      id: 4,
-      name: "Annie",
-      date: "2026-01-21",
-      time: "09:00 ~ 15:00",
-      breakTime: "30분",
-      status: "none",
-      isPlanned: true,
-    },
-  ]);
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [currentStoreId, setCurrentStoreId] = useState<number | null>(null);
+  const [weeklySchedules, setWeeklySchedules] = useState<ScheduleItem[]>([]);
+  const [realTimeAttendances, setRealTimeAttendances] = useState<
+    RealTimeStatus[]
+  >([]);
 
   const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<Attendance | null>(null);
+  const [selectedUser, setSelectedUser] = useState<{
+    name: string;
+    userId?: number;
+  } | null>(null);
+
   const [editForm, setEditForm] = useState({
-    date: "2026-01-20",
+    scheduleId: 0,
+    date: "",
     start: "12:00",
     end: "18:00",
     breakTime: "30",
     isPlanned: false,
   });
 
-  // --- 로직 ---
+  // --- 2. 유틸리티 로직 ---
   const weekDays = useMemo(() => {
     const current = new Date(selectedDate);
     const sunday = new Date(current);
@@ -99,83 +83,193 @@ const AttendancePage: React.FC = () => {
     );
   }, [selectedDate]);
 
-  const handleEditPress = (user: Attendance) => {
-    setSelectedUser(user);
-    const times = user.time.includes("~")
-      ? user.time.split(" ~ ")
-      : ["12:00", "18:00"];
-    const bTime = user.breakTime.replace("분", "");
+  const formatTime = (text: string) => {
+    const cleaned = text.replace(/[^0-9]/g, "");
+    let formatted = cleaned;
+    if (cleaned.length >= 3)
+      formatted = `${cleaned.slice(0, 2)}:${cleaned.slice(2, 4)}`;
+    return formatted.slice(0, 5);
+  };
+
+  const getAuthHeader = async () => {
+    try {
+      const token =
+        Platform.OS === "web"
+          ? localStorage.getItem("user_token")
+          : await AsyncStorage.getItem("user_token");
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
+  // ✅ [상태 색상] 가이드 매핑 복구
+  const getStatusColor = (userName: string) => {
+    if (!Array.isArray(realTimeAttendances)) return "#BDBDBD";
+    const user = realTimeAttendances.find(
+      (u) => u.name.trim() === userName.trim(),
+    );
+    switch (user?.status) {
+      case "ON":
+        return "#00E676"; // 정상 (녹색)
+      case "LATE":
+        return "#FFEB3B"; // 지각 (노랑)
+      case "ABSENT":
+        return "#FF1744"; // 결근 (빨강)
+      default:
+        return "#BDBDBD"; // 미출근 (회색)
+    }
+  };
+
+  // --- 3. 데이터 로드 ---
+  const fetchWeeklySchedule = useCallback(async (id: number, date: string) => {
+    try {
+      const headers = await getAuthHeader();
+      const response = await api.get("/api/v1/schedules/weekly", {
+        params: { storeId: id, startDate: date },
+        headers,
+      });
+      setWeeklySchedules(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      setWeeklySchedules([]);
+    }
+  }, []);
+
+  const fetchTodayStatus = useCallback(async (id: number) => {
+    try {
+      const headers = await getAuthHeader();
+      const response = await api.get("/api/v1/attendances/today", {
+        params: { storeId: id },
+        headers,
+      });
+      setRealTimeAttendances(response.data?.data?.list || []);
+    } catch (error) {
+      setRealTimeAttendances([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        const storedUsername = await AsyncStorage.getItem("username");
+        const headers = await getAuthHeader();
+        const profileRes = await api.get(`/api/v1/users/me`, {
+          params: { username: storedUsername },
+          headers,
+        });
+        const userData = profileRes.data.data || profileRes.data;
+        if (userData.storeId) {
+          const id = Number(userData.storeId);
+          setCurrentStoreId(id);
+          fetchWeeklySchedule(id, selectedDate);
+          fetchTodayStatus(id);
+        }
+      } catch (e) {
+        console.error("데이터 로드 실패");
+      }
+    };
+    initData();
+  }, [selectedDate, fetchWeeklySchedule, fetchTodayStatus]);
+
+  // --- 4. 필터링 및 핸들러 ---
+  const filteredSchedules = useMemo(() => {
+    const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    const currentDay = dayNames[new Date(selectedDate).getDay()];
+    return weeklySchedules.filter((item) => item.day === currentDay);
+  }, [selectedDate, weeklySchedules]);
+
+  const handleEditPress = (worker: Worker, item: ScheduleItem) => {
+    const timeParts = item.time?.split("~") || ["12:00", "18:00"];
+    setSelectedUser({ name: worker.name, userId: worker.userId });
     setEditForm({
-      date: user.date,
-      start: times[0].trim(),
-      end: times[1]?.trim() || "18:00",
-      breakTime: bTime,
-      isPlanned: user.isPlanned,
+      scheduleId: worker.scheduleId,
+      date: selectedDate, // 🌟 날짜 자동 고정
+      start: item.startTime || timeParts[0]?.trim(),
+      end: item.endTime || timeParts[1]?.trim(),
+      breakTime: "30",
+      isPlanned: false,
     });
-    setBreakTime(bTime);
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = () => {
-    if (!selectedUser) return;
-    const updatedData = manualData.map((item) =>
-      item.id === selectedUser.id
-        ? {
-            ...item,
-            date: editForm.date,
-            time: `${editForm.start} ~ ${editForm.end}`,
-            breakTime: `${editForm.breakTime}분`,
-            isPlanned: editForm.isPlanned,
-            status:
-              item.isPlanned && !editForm.isPlanned ? "active" : item.status,
-          }
-        : item,
-    );
-    setManualData(updatedData);
-    setShowEditModal(false);
+  const handleSaveEdit = async () => {
+    try {
+      const headers = await getAuthHeader();
+      const payload = {
+        workDate: editForm.date,
+        startTime: editForm.start,
+        endTime: editForm.end,
+        breakTime: parseInt(editForm.breakTime),
+      };
+      const response = await api.patch(
+        `/api/v1/schedules/${editForm.scheduleId}`,
+        payload,
+        { headers },
+      );
+      if (response.data.success) {
+        Alert.alert("성공", "수정되었습니다.", [
+          { text: "확인", onPress: () => setShowEditModal(false) },
+        ]);
+        if (currentStoreId) fetchWeeklySchedule(currentStoreId, selectedDate);
+      }
+    } catch (error) {
+      Alert.alert("오류", "수정 중 에러가 발생했습니다.");
+    }
   };
 
   return (
     <View style={styles.container}>
       <Header notificationCount={5} />
-
-      {/* 1. 메인 스크롤 뷰: contentContainerStyle에 패딩을 넉넉히 주어 푸터에 가리지 않게 함 */}
       <ScrollView
         contentContainerStyle={[styles.scrollContainer, { paddingBottom: 150 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.sectionTitle}>아르바이트생 출퇴근 기록 확인</Text>
+        {/* 🌟 ✅ [복구] 아르바이트생 출퇴근 기록 확인 섹션 */}
+        <Text style={styles.sectionTitle}>
+          아르바이트생 출퇴근 기록 확인 ({selectedDate})
+        </Text>
         <View style={styles.sectionCard}>
-          {manualData.map((item) => (
-            <View key={item.id} style={styles.infoRow}>
-              <Text style={styles.userName}>{item.name}</Text>
-              <Text style={styles.timeText}>{item.time}</Text>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor:
-                      item.status === "active"
-                        ? "#4ADE80"
-                        : item.status === "late"
-                          ? "#FACC15"
-                          : "#FB7185",
-                  },
-                ]}
-              />
-            </View>
-          ))}
+          {filteredSchedules.length > 0 ? (
+            filteredSchedules.map((item, idx) => (
+              <View key={idx} style={styles.infoRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.userName}>
+                    {item.workers?.map((w) => w.name).join(", ")}
+                  </Text>
+                </View>
+                <Text style={styles.timeText}>
+                  {item.startTime && item.endTime
+                    ? `${item.startTime} ~ ${item.endTime}`
+                    : item.time}
+                </Text>
+                {/* 실시간 상태 색상 점 */}
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor: getStatusColor(
+                        item.workers?.[0]?.name || "",
+                      ),
+                    },
+                  ]}
+                />
+              </View>
+            ))
+          ) : (
+            <Text style={{ textAlign: "center", padding: 20, color: "#999" }}>
+              기록이 없습니다.
+            </Text>
+          )}
         </View>
 
         <View style={styles.titleRow}>
           <Text style={styles.sectionTitle}>근무 수정</Text>
-          <TouchableOpacity onPress={() => setShowCalendar(!showCalendar)}>
-            <Ionicons
-              name={showCalendar ? "calendar" : "calendar-outline"}
-              size={22}
-              color="#A28BFF"
-            />
+          <TouchableOpacity
+            onPress={() => setShowCalendar(true)}
+            style={{ padding: 5 }}
+          >
+            <Ionicons name="calendar-outline" size={24} color="#A28BFF" />
           </TouchableOpacity>
         </View>
 
@@ -208,56 +302,35 @@ const AttendancePage: React.FC = () => {
               </TouchableOpacity>
             ))}
           </View>
-          {manualData.map((item) => (
-            <View key={item.id} style={styles.infoRow}>
-              <TouchableOpacity
-                style={styles.nameBadge}
-                onPress={() => handleEditPress(item)}
-              >
-                <Text style={styles.nameBadgeText}>{item.name}</Text>
-              </TouchableOpacity>
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.timeText}>{item.time}</Text>
+          {filteredSchedules.map((item, idx) =>
+            item.workers?.map((worker, wIdx) => (
+              <View key={`${idx}-${wIdx}`} style={styles.infoRow}>
+                <TouchableOpacity
+                  style={styles.nameBadge}
+                  onPress={() => handleEditPress(worker, item)}
+                >
+                  <Text style={styles.nameBadgeText}>{worker.name}</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.timeText}>
+                    {item.startTime && item.endTime
+                      ? `${item.startTime} ~ ${item.endTime}`
+                      : item.time}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: getStatusColor(worker.name) },
+                  ]}
+                />
               </View>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor:
-                      item.status === "active"
-                        ? "#4ADE80"
-                        : item.status === "late"
-                          ? "#FACC15"
-                          : "#FB7185",
-                  },
-                ]}
-              />
-            </View>
-          ))}
+            )),
+          )}
         </View>
-
-        {showCalendar && (
-          <View style={styles.fixedContainer}>
-            <View style={styles.header}>
-              <Text style={styles.headerText}>날짜 선택</Text>
-              <TouchableOpacity onPress={() => setShowCalendar(false)}>
-                <Ionicons name="close" size={20} color="#999" />
-              </TouchableOpacity>
-            </View>
-            <CustomDatePicker
-              visible={true}
-              value={selectedDate}
-              onDateChange={(d: string) => {
-                setSelectedDate(d);
-                setShowCalendar(false);
-              }}
-              onClose={() => setShowCalendar(false)}
-            />
-          </View>
-        )}
       </ScrollView>
 
-      {/* 2. 근무 수정 모달: 내부 ScrollView 추가 */}
+      {/* 수정 모달 */}
       <Modal visible={showEditModal} transparent animationType="slide">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -268,17 +341,12 @@ const AttendancePage: React.FC = () => {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 20 }}
             >
-              {/* 상단 헤더 */}
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {selectedUser?.name} 근무 수정
-                </Text>
+                <Text style={styles.modalTitle}>근무 수정</Text>
                 <View style={styles.userTag}>
-                  <Text style={styles.userTagText}>JUN</Text>
+                  <Text style={styles.userTagText}>{selectedUser?.name}</Text>
                 </View>
               </View>
-
-              {/* 1. 카테고리 탭 */}
               <View style={styles.categoryGroup}>
                 <TouchableOpacity
                   style={[
@@ -309,69 +377,59 @@ const AttendancePage: React.FC = () => {
                       editForm.isPlanned && styles.categoryTextActive,
                     ]}
                   >
-                    기록될 근무
+                    기록된 근무
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              {/* 2. 근무 일자 */}
-              <View style={styles.inputField}>
-                <Text style={styles.inputLabel}>근무 일자</Text>
-                <TouchableOpacity
-                  style={styles.dateInputBox}
-                  onPress={() => setShowEditCalendar(true)}
-                >
-                  <Text style={{ color: "#333" }}>{editForm.date}</Text>
-                  <Ionicons name="calendar-outline" size={20} color="#A28BFF" />
-                </TouchableOpacity>
-              </View>
-
-              {/* 3. 근무 시간 */}
               <View style={styles.inputField}>
                 <Text style={styles.inputLabel}>근무 시간</Text>
                 <View style={styles.timeInputRow}>
-                  <View style={styles.timeInputItem}>
-                    <TextInput
-                      style={styles.timeInput}
-                      value={editForm.start}
-                      onChangeText={(t) =>
-                        setEditForm({ ...editForm, start: t })
-                      }
-                      keyboardType="number-pad"
-                    />
-                  </View>
+                  <TextInput
+                    style={[
+                      styles.timeInput,
+                      { color: editForm.start ? "#000" : "#999" }, // 값이 있으면 검은색, 없으면 회색
+                    ]}
+                    value={editForm.start}
+                    onChangeText={(t) =>
+                      setEditForm({ ...editForm, start: formatTime(t) })
+                    }
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    placeholder="시작 시간"
+                  />
                   <Text style={{ marginHorizontal: 10, color: "#999" }}>~</Text>
-                  <View style={styles.timeInputItem}>
-                    <TextInput
-                      style={styles.timeInput}
-                      value={editForm.end}
-                      onChangeText={(t) => setEditForm({ ...editForm, end: t })}
-                      keyboardType="number-pad"
-                    />
-                  </View>
+                  <TextInput
+                    style={[
+                      styles.timeInput,
+                      { color: editForm.end ? "#000" : "#999" }, // 값이 있으면 검은색, 없으면 회색
+                    ]}
+                    value={editForm.end}
+                    onChangeText={(t) =>
+                      setEditForm({ ...editForm, end: formatTime(t) })
+                    }
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    placeholder="종료 시간"
+                  />
                 </View>
               </View>
 
-              {/* 4. 휴게 시간 (버튼 형태) */}
               <View style={styles.inputField}>
                 <Text style={styles.inputLabel}>휴게 시간 (분)</Text>
                 <View style={styles.breakTimeGroup}>
-                  {["30", "60"].map((t) => (
+                  {["0", "30", "60"].map((t) => (
                     <TouchableOpacity
                       key={t}
                       style={[
                         styles.breakTimeBtn,
-                        breakTime === t && styles.breakTimeBtnActive,
+                        editForm.breakTime === t && styles.breakTimeBtnActive,
                       ]}
-                      onPress={() => {
-                        setBreakTime(t);
-                        setEditForm({ ...editForm, breakTime: t });
-                      }}
+                      onPress={() => setEditForm({ ...editForm, breakTime: t })}
                     >
                       <Text
                         style={
-                          breakTime === t
-                            ? { color: "white" }
+                          editForm.breakTime === t
+                            ? { color: "#000" }
                             : { color: "#333" }
                         }
                       >
@@ -382,7 +440,6 @@ const AttendancePage: React.FC = () => {
                 </View>
               </View>
 
-              {/* 하단 버튼 */}
               <View style={styles.modalBtnGroup}>
                 <TouchableOpacity
                   style={styles.cancelBtn}
@@ -402,38 +459,18 @@ const AttendancePage: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* 날짜 선택 중앙 팝업 */}
-      <Modal visible={showEditCalendar} transparent animationType="fade">
-        <View style={styles.centerOverlay}>
-          <View style={styles.centerModalContainer}>
-            <View style={styles.header}>
-              <Text style={{ fontSize: 16, fontWeight: "bold", padding: 15 }}>
-                근무 일자 선택
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowEditCalendar(false)}
-                style={{ padding: 15 }}
-              >
-                <Ionicons name="close" size={24} color="#999" />
-              </TouchableOpacity>
-            </View>
-            <View style={{ paddingHorizontal: 10, paddingBottom: 20 }}>
-              <CustomDatePicker
-                visible={true}
-                value={editForm.date}
-                onDateChange={(d: string) => {
-                  setEditForm({ ...editForm, date: d });
-                  setShowEditCalendar(false);
-                }}
-                onClose={() => setShowEditCalendar(false)}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
+      <CustomDatePicker
+        visible={showCalendar}
+        value={selectedDate}
+        onDateChange={(d: string) => {
+          setSelectedDate(d);
+          setShowCalendar(false);
+        }}
+        onClose={() => setShowCalendar(false)}
+      />
       <Footer />
     </View>
   );
 };
+
 export default AttendancePage;
