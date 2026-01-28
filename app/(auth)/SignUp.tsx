@@ -75,7 +75,7 @@ export default function SignUpScreen() {
         role: role,
       });
 
-      // 2. 가입 성공 시 처리해줌
+      // 2. 가입 성공 시 처리
       if (response.status === 200 || response.status === 201) {
         showAlert("회원가입이 완료되었습니다! 로그인 해주세요.");
 
