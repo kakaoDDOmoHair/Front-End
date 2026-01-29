@@ -145,6 +145,7 @@ export const styles = StyleSheet.create({
     gap: 10,
   },
   toolBtn: {
+    flex: 1,
     backgroundColor: "#E9E7FDFF",
     paddingHorizontal: 15,
     paddingVertical: 7,
@@ -229,7 +230,23 @@ export const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 18,
   },
-
+  // styles/tabs/boss/Pay.js (또는 해당 스타일 파일)에 추가
+  yearDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    fontSize: 14,
+    color: "#999",
+    marginVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEE",
+    paddingBottom: 5,
+  },
+  doneBtn: {
+    backgroundColor: "#E0E0E0", // 완료된 버튼은 회색조
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+  },
   // 계좌 복사 모달
   copyModalContent: {
     width: "85%",
