@@ -73,6 +73,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
+    minHeight: 44,
+    justifyContent: "center",
   },
   doneBadgeText: { color: "#AAA", fontSize: 13, fontWeight: "bold" },
   thinDivider: { height: 1, backgroundColor: "#F0F0F0", marginVertical: 10 },
