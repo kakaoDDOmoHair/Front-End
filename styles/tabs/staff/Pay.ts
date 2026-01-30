@@ -36,7 +36,6 @@ export const styles = StyleSheet.create({
     color: "#333",
   },
 
-  // 급여 리스트 디자인 (사장님용 복제)
   salaryCard: { backgroundColor: "#F9F9F9", borderRadius: 25, padding: 20 },
   yearHeaderRow: {
     flexDirection: "row",
