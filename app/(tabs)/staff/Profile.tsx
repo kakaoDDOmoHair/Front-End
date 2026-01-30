@@ -24,6 +24,8 @@ import {
     StaffProfileData,
     UsersMeResponse,
 } from "../../../components/profile/StaffData";
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import StaffProfile from "../../../components/profile/StaffProfile";
 import api from "../../../constants/api";
 import { modalStyles, styles } from "../../../styles/tabs/staff/Profile";
@@ -90,6 +92,7 @@ export default function StaffProfileScreen() {
   const [isAgreed, setIsAgreed] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [notificationCount] = useState(0);
 
   // --- users/me API 호출 (알바생 이름, 이메일, 생일 등) ---
   React.useEffect(() => {
@@ -278,24 +281,7 @@ export default function StaffProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-
-      {/* 상단 헤더 */}
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/logo.png")}
-          style={{ width: 90, height: 70 }}
-          resizeMode="contain"
-        />
-        <TouchableOpacity onPress={() => router.push("./notification")}>
-          <View style={{ position: "relative" }}>
-            <Ionicons name="notifications" size={24} color="#D1C4E9" />
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>2</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
-
+      <Header notificationCount={notificationCount} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
@@ -352,6 +338,7 @@ export default function StaffProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <Footer />
 
       {/* --- 모달 모음 --- */}
 

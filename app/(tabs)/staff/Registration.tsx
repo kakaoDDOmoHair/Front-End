@@ -1,14 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
 import {
     Alert,
-    Image,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    SafeAreaView,
     Text,
     TouchableOpacity,
     View,
@@ -16,6 +15,7 @@ import {
 import { BankSelectModal } from "../../../components/common/BankSelectModal";
 import { CustomInput } from "../../../components/common/CustomInput";
 import { FormSection } from "../../../components/common/FormSection";
+import Header from "../../../components/common/Header";
 import { SideButton } from "../../../components/common/SideButton";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/staff/Registration";
@@ -284,32 +284,16 @@ export default function WorkerRegistrationScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/logo.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <TouchableOpacity
-          onPress={() => router.push("/(tabs)/staff/Notification")}
-        >
-          <Ionicons name="notifications" size={24} color="#D1C4E9" />
-          {notificationCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{notificationCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+      <Header notificationCount={notificationCount} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
         <FormSection title="초대 정보">
           <Text style={styles.label}>초대코드</Text>
           <CustomInput
@@ -421,6 +405,7 @@ export default function WorkerRegistrationScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
