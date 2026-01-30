@@ -1,61 +1,89 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   SafeAreaView,
   ScrollView,
   StatusBar,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+
+// 👇 공통 컴포넌트
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
+
+// 👇 대시보드 내부 컴포넌트 & 데이터
 import {
-  ScheduleCard,
-  TabItem,
-  WorkerCard,
+  ScheduleCard
 } from "../../../components/dashboard/BossDashboard";
-import { SCHEDULES, WORKERS } from "../../../components/dashboard/Data";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Dashboard";
 
+// 1. 할 일 아이템 인터페이스 (서버 응답 기준)
 interface TodoItem {
   todoId: number;
   content: string;
   done: boolean;
 }
 
-// 📊 통계 데이터 타입 정의
 interface DashboardStats {
   totalCost: number;
   growthRate: number;
   payDate: string;
+  inviteCode: string;
+}
+
+interface TodayAttendanceStatus {
+  userId: number;
+  name: string;
+  status: "ON" | "OFF" | "LATE" | "ABSENT";
+}
+
+interface WeeklyScheduleApiItem {
+  day: string;
+  time: string;
+  workers?: { scheduleId: number; name: string; breakTime: number }[];
+}
+
+interface WeeklyScheduleDay {
+  day: string;
+  schedules: { time: string; staff: string[] }[];
 }
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const [todoText, setTodoText] = useState("");
-  const [todoList, setTodoList] = useState<TodoItem[]>([]);
-  const [userName, setUserName] = useState("사장님");
+  const pathname = usePathname();
 
+  const [userName, setUserName] = useState("사장님");
   const [currentStoreId, setCurrentStoreId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notificationCount, setNotificationCount] = useState(3);
 
-  // 📊 통계 상태 (초기값 설정)
+  // 할 일 관련 상태
+  const [todoText, setTodoText] = useState("");
+  const [todoList, setTodoList] = useState<TodoItem[]>([]);
+
   const [stats, setStats] = useState<DashboardStats>({
     totalCost: 0,
     growthRate: 0,
     payDate: "-",
+    inviteCode: "불러오는 중...",
   });
+  const [todayAttendances, setTodayAttendances] = useState<
+    TodayAttendanceStatus[]
+  >([]);
+  const [todayTotalPay, setTodayTotalPay] = useState(0);
+  const [weeklySchedules, setWeeklySchedules] = useState<WeeklyScheduleDay[]>(
+    [],
+  );
 
-  // AsyncStorage 사용
   const getUsernameFromStorage = async () => {
     try {
       return await AsyncStorage.getItem("username");
@@ -64,31 +92,53 @@ export default function DashboardScreen() {
     }
   };
 
+  const getAuthHeader = async () => {
+    try {
+      const token = await AsyncStorage.getItem("user_token");
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
+  const getWeekStartDate = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - day);
+    return sunday.toISOString().split("T")[0];
+  };
+
+  const dayOrder = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const dayLabelMap: Record<string, string> = {
+    SUN: "일",
+    MON: "월",
+    TUE: "화",
+    WED: "수",
+    THU: "목",
+    FRI: "금",
+    SAT: "토",
+  };
+
   const initializeDashboard = async () => {
     try {
       if (!currentStoreId) setIsLoading(true);
-
       const username = await getUsernameFromStorage();
-
       if (!username) {
-        console.log("⚠️ 저장된 아이디가 없습니다.");
         setIsLoading(false);
         return;
       }
 
       const storeId = await fetchUserInfo(username);
-
       if (storeId) {
-        console.log("✅ 매장 확인됨 (ID:", storeId, ")");
         setCurrentStoreId(storeId);
-
-        // 🔥 [추가] 통계 데이터와 할 일 목록을 동시에 불러옴
         await Promise.all([
           fetchTodos(storeId),
-          fetchDashboardStats(storeId), // 통계 API 호출
+          fetchDashboardData(storeId),
+          fetchTodayAttendances(storeId),
+          fetchWeeklySchedules(storeId),
         ]);
       } else {
-        console.log("⚠️ 아직 매장이 없습니다.");
         setCurrentStoreId(null);
       }
     } catch (error) {
@@ -100,8 +150,10 @@ export default function DashboardScreen() {
 
   const fetchUserInfo = async (username: string) => {
     try {
+      const headers = await getAuthHeader();
       const response = await api.get("/api/v1/users/me", {
         params: { username: username },
+        headers,
       });
       const { name, storeId } = response.data;
       if (name) setUserName(name);
@@ -111,37 +163,90 @@ export default function DashboardScreen() {
     }
   };
 
-  // 📊 [신규] 대시보드 통계 조회 API
-  const fetchDashboardStats = async (storeId: number) => {
+  const fetchDashboardData = async (storeId: number) => {
     try {
+      const headers = await getAuthHeader();
       const now = new Date();
-      // 현재 년/월 기준 조회 (파라미터 선택사항이지만 보내는 게 확실함)
-      const response = await api.get("/api/v1/stores/dashboard", {
-        params: {
-          storeId,
-          year: now.getFullYear(),
-          month: now.getMonth() + 1,
-        },
+      const dashboardRes = await api.get("/api/v1/stores/dashboard", {
+        params: { storeId, year: now.getFullYear(), month: now.getMonth() + 1 },
+        headers,
       });
+      const storeRes = await api.get(`/api/v1/stores/${storeId}`);
 
-      // 응답 예시: { "totalCost": 4250000, "growthRate": 5.2, "payDate": "2026-01-05" }
-      if (response.data) {
-        setStats(response.data);
-      }
+      setStats({
+        totalCost: dashboardRes.data.totalCost || 0,
+        growthRate: dashboardRes.data.growthRate || 0,
+        payDate: dashboardRes.data.payDate || "-",
+        inviteCode:
+          storeRes.data.inviteCode || storeRes.data.invite_code || "코드 없음",
+      });
     } catch (error) {
-      console.error("❌ 통계 조회 실패:", error);
-      // 실패 시 기본값 유지
+      setStats((prev) => ({ ...prev, inviteCode: "오류" }));
     }
   };
 
+  const fetchTodayAttendances = async (storeId: number) => {
+    try {
+      const headers = await getAuthHeader();
+      const response = await api.get("/api/v1/attendances/today", {
+        params: { storeId },
+        headers,
+      });
+      const payload = response.data?.data || response.data;
+      const list =
+        payload?.list || payload?.attendances || payload?.items || [];
+      setTodayAttendances(Array.isArray(list) ? list : []);
+      const totalPay =
+        payload?.totalPay ??
+        payload?.totalCost ??
+        payload?.totalWage ??
+        payload?.expectedPay ??
+        0;
+      setTodayTotalPay(Number(totalPay) || 0);
+    } catch (error) {
+      setTodayAttendances([]);
+      setTodayTotalPay(0);
+    }
+  };
+
+  const fetchWeeklySchedules = async (storeId: number) => {
+    try {
+      const headers = await getAuthHeader();
+      const startDate = getWeekStartDate();
+      const response = await api.get("/api/v1/schedules/weekly", {
+        params: { storeId, startDate },
+        headers,
+      });
+      const payload = response.data?.data || response.data;
+      const list: WeeklyScheduleApiItem[] = Array.isArray(payload)
+        ? payload
+        : payload?.list || payload?.items || [];
+
+      const grouped = dayOrder.map((day) => {
+        const items = list.filter((item) => item.day === day);
+        return {
+          day: dayLabelMap[day] || day,
+          schedules: items.map((item) => ({
+            time: item.time,
+            staff: (item.workers || []).map((w) => w.name),
+          })),
+        };
+      });
+      setWeeklySchedules(grouped);
+    } catch (error) {
+      setWeeklySchedules(
+        dayOrder.map((day) => ({ day: dayLabelMap[day] || day, schedules: [] })),
+      );
+    }
+  };
+
+  // 할 일 목록 가져오기
   const fetchTodos = async (storeId: number) => {
     try {
-      const response = await api.get("/api/v1/todos", {
-        params: { storeId },
-      });
+      const response = await api.get("/api/v1/todos", { params: { storeId } });
       setTodoList(response.data || []);
     } catch (error) {
-      console.error("할 일 목록 로드 실패");
+      console.error("할 일 로드 실패");
     }
   };
 
@@ -152,13 +257,20 @@ export default function DashboardScreen() {
   );
 
   const copyToClipboard = async () => {
-    await Clipboard.setStringAsync("135155");
-    Alert.alert("알림", "초대 코드가 복사되었습니다.");
+    if (
+      stats.inviteCode === "불러오는 중..." ||
+      stats.inviteCode === "코드 없음"
+    )
+      return;
+    await Clipboard.setStringAsync(stats.inviteCode);
+    Alert.alert(
+      "복사 완료",
+      `초대 코드 [${stats.inviteCode}]가 복사되었습니다.`,
+    );
   };
 
   const addTodo = async () => {
-    if (todoText.trim() === "") return;
-    if (!currentStoreId) return;
+    if (todoText.trim() === "" || !currentStoreId) return;
     try {
       const response = await api.post("/api/v1/todos", {
         storeId: currentStoreId,
@@ -180,17 +292,14 @@ export default function DashboardScreen() {
           item.todoId === todoId ? { ...item, done: !item.done } : item,
         ),
       );
-      const response = await api.patch(`/api/v1/todos/${todoId}/toggle`);
-      if (response.data.success && currentStoreId) {
-        fetchTodos(currentStoreId);
-      }
+      await api.patch(`/api/v1/todos/${todoId}/toggle`);
     } catch (error) {
       if (currentStoreId) fetchTodos(currentStoreId);
     }
   };
 
   const deleteTodo = (todoId: number) => {
-    Alert.alert("삭제", "삭제하시겠습니까?", [
+    Alert.alert("삭제", "이 할 일을 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
       {
         text: "삭제",
@@ -200,18 +309,25 @@ export default function DashboardScreen() {
             if (response.data.success) {
               setTodoList((prev) => prev.filter((i) => i.todoId !== todoId));
             }
-          } catch (error) {}
+          } catch (error) {
+            Alert.alert("오류", "삭제 실패");
+          }
         },
       },
     ]);
   };
 
-  // 숫자 포맷팅 (3자리 콤마)
-  const formatNumber = (num: number) => {
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  };
+  const formatNumber = (num: number) =>
+    num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const weekSchedules =
+    weeklySchedules.length > 0
+      ? weeklySchedules
+      : dayOrder.map((day) => ({
+          day: dayLabelMap[day] || day,
+          schedules: [],
+        }));
 
-  // 1. 로딩 중
+
   if (isLoading) {
     return (
       <SafeAreaView
@@ -220,112 +336,72 @@ export default function DashboardScreen() {
           { justifyContent: "center", alignItems: "center" },
         ]}
       >
-        <ActivityIndicator size="large" color="#6C5CE7" />
-        <Text style={{ marginTop: 10, color: "#666" }}>
-          정보를 불러오는 중...
-        </Text>
+        <ActivityIndicator size="large" color="#E0D5FF" />
       </SafeAreaView>
     );
   }
 
-  // 2. 매장 없음 (등록 유도)
+  // 🔴 매장 없음 뷰 (푸터 로직 포함)
   if (!currentStoreId) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Image
-            source={require("../../../assets/images/logo.png")}
-            style={{ width: 90, height: 70 }}
-            resizeMode="contain"
-          />
-        </View>
-
-        <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
-          <Text style={{ fontSize: 20, fontWeight: "bold" }}>
-            반갑습니다, <Text style={{ color: "#6C5CE7" }}>{userName}</Text>님!
+        <Header notificationCount={notificationCount} />
+        <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
+          <Text style={{ fontSize: 25, fontWeight: "bold" }}>
+            반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text>님!
             👋
           </Text>
         </View>
 
-        <View style={localStyles.emptyContainer}>
-          <View style={localStyles.emptyContent}>
-            <Ionicons name="storefront-outline" size={80} color="#ddd" />
-            <Text style={localStyles.emptyTitle}>등록된 매장이 없습니다</Text>
-            <Text style={localStyles.emptyDesc}>
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyContent}>
+            <Ionicons name="storefront-outline" size={80} color="#C4C4C4" />
+            <Text style={styles.emptyTitle}>등록된 매장이 없습니다</Text>
+            <Text style={styles.emptyDesc}>
               매장을 등록하고 직원 관리와 급여 정산을{"\n"}시작해보세요!
             </Text>
-
             <TouchableOpacity
-              style={localStyles.registerButton}
+              style={styles.registerButton}
               onPress={() => router.push("/(tabs)/boss/Registration")}
             >
-              <Text style={localStyles.registerButtonText}>
-                매장 등록하러 가기
-              </Text>
-              <Ionicons name="arrow-forward" size={20} color="#fff" />
+              <Text style={styles.registerButtonText}>매장 등록하러 가기</Text>
+              <Ionicons name="arrow-forward" size={20} color="#9747FF" />
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.bottomTab}>
-          <TabItem icon="wifi" label="출퇴근관리" />
-          <TabItem icon="document-text" label="계약서" />
-          <TabItem icon="home" label="홈" active />
-          <TabItem icon="wallet" label="급여관리" />
-          <TabItem icon="person" label="프로필" />
+        {/* ✅ 매장이 없을 때는 클릭 불가능한 안내 바를 표시합니다. */}
+        <View
+          style={{
+            height: 85,
+            backgroundColor: "#F9F9F9",
+            borderTopWidth: 1,
+            borderTopColor: "#EEE",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#CCC", fontSize: 12 }}>
+            매장 등록 후 메뉴 이용이 가능합니다
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // 3. 매장 있음 (정상 대시보드)
+  // 🟢 매장 있을 때 (정상 대시보드 컨텐츠)
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Image
-            source={require("../../../assets/images/logo.png")}
-            style={{ width: 90, height: 70 }}
-            resizeMode="contain"
-          />
-          <TouchableOpacity
-            onPress={() => router.push("./(tabs)/boss/Notification")}
-            style={{ position: "relative" }}
-          >
-            <Ionicons name="notifications" size={24} color="#D1C4E9" />
-            {notificationCount > 0 && (
-              <View
-                style={{
-                  position: "absolute",
-                  top: -4,
-                  right: -4,
-                  backgroundColor: "#FF4444",
-                  borderRadius: 10,
-                  minWidth: 18,
-                  height: 18,
-                  justifyContent: "center",
-                  alignItems: "center",
-                  paddingHorizontal: 4,
-                }}
-              >
-                <Text
-                  style={{ color: "#fff", fontSize: 11, fontWeight: "bold" }}
-                >
-                  {notificationCount > 99 ? "99+" : notificationCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
+        <Header notificationCount={notificationCount} />
 
-        <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
-          <Text style={{ fontSize: 20, fontWeight: "bold" }}>
-            반갑습니다, <Text style={{ color: "#6C5CE7" }}>{userName}</Text>님!
-            👋
+        <View style={styles.greetingContainer}>
+          <Text style={styles.greetingText}>
+            반갑습니다, <Text style={styles.greetingName}>{userName}</Text>님!👋
           </Text>
         </View>
 
@@ -335,27 +411,28 @@ export default function DashboardScreen() {
             onPress={copyToClipboard}
           >
             <Text style={styles.inviteText}>
-              초대 코드 <Text style={styles.purpleText}>135155</Text>
+              초대 코드{" "}
+              <Text style={styles.purpleText}>{stats.inviteCode}</Text>
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.manualButton}
             activeOpacity={0.7}
-            onPress={() => router.push("/(tabs)/boss/Manual")}
+            onPress={() => {
+              const userType = pathname.includes("/staff") ? "staff" : "boss";
+              router.push(`/(tabs)/${userType}/Manual`);
+            }}
           >
             <Text style={styles.manualButtonText}>매뉴얼 등록하기</Text>
           </TouchableOpacity>
         </View>
 
-        {/* 📊 인건비 (API 데이터 적용) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>인건비 및 근무 현황</Text>
-          {/* payDate 포맷 변경 (2026-01-05 -> 2026.01.05) */}
           <Text style={styles.dateText}>
             정산일 {stats.payDate.replace(/-/g, ".")}
           </Text>
           <View style={styles.costContainer}>
-            {/* totalCost에 콤마 찍기 */}
             <Text style={styles.costAmount}>
               {formatNumber(stats.totalCost)}
             </Text>
@@ -370,39 +447,18 @@ export default function DashboardScreen() {
                 {stats.growthRate >= 0 ? "+ " : ""}
                 {stats.growthRate}%
               </Text>{" "}
-              {stats.growthRate >= 0 ? "증가" : "감소"}했습니다.
+              증가했습니다.
             </Text>
           </View>
         </View>
 
-        {/* 근무자 */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>현재 근무 중</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>3명</Text>
-            </View>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalScroll}
-          >
-            {WORKERS.map((worker) => (
-              <View key={worker.id} style={{ marginRight: 15 }}>
-                <WorkerCard data={worker} />
-              </View>
-            ))}
-          </ScrollView>
-        </View>
 
-        {/* To Do List */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>오늘의 To Do List</Text>
           {todoList.length === 0 ? (
             <View style={{ paddingVertical: 20, alignItems: "center" }}>
               <Text style={{ color: "#AFAFAF" }}>
-                오늘의 할 일을 작성해주세요 ✏️
+                오늘의 할 일을 입력해 주세요✏️
               </Text>
             </View>
           ) : (
@@ -425,7 +481,7 @@ export default function DashboardScreen() {
                   ]}
                 >
                   {item.done && (
-                    <Ionicons name="checkmark" size={12} color="#fff" />
+                    <Ionicons name="checkmark" size={14} color="#fff" />
                   )}
                 </View>
                 <Text
@@ -446,25 +502,24 @@ export default function DashboardScreen() {
             <TextInput
               value={todoText}
               onChangeText={setTodoText}
-              placeholder="오늘의 할 일을 입력해주세요"
+              placeholder="할 일을 입력해주세요"
               style={styles.input}
               onSubmitEditing={addTodo}
             />
             <TouchableOpacity onPress={addTodo}>
-              <Ionicons name="add-circle" size={28} color="#000" />
+              <Ionicons name="add-circle" size={32} color="#000" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* 근무 시간표 */}
-        <View style={[styles.section, { marginBottom: 80 }]}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>근무 시간표</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScroll}
           >
-            {SCHEDULES.map((day, idx) => (
+            {weekSchedules.map((day, idx) => (
               <View key={idx} style={{ marginRight: 12 }}>
                 <ScheduleCard data={day} />
               </View>
@@ -473,58 +528,8 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.bottomTab}>
-        <TabItem icon="wifi" label="출퇴근관리" />
-        <TabItem icon="document-text" label="계약서" />
-        <TabItem icon="home" label="홈" active />
-        <TabItem icon="wallet" label="급여관리" />
-        <TabItem icon="person" label="프로필" />
-      </View>
+      {/* ✅ 매장이 있을 때만 실제 푸터 컴포넌트를 렌더링합니다. */}
+      {currentStoreId && <Footer />}
     </SafeAreaView>
   );
 }
-
-const localStyles = StyleSheet.create({
-  emptyContainer: {
-    flex: 1,
-    paddingVertical: 60,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyContent: {
-    alignItems: "center",
-    backgroundColor: "#F8F9FA",
-    padding: 30,
-    borderRadius: 20,
-    width: "90%",
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginTop: 20,
-    color: "#333",
-  },
-  emptyDesc: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 10,
-    marginBottom: 30,
-    lineHeight: 20,
-  },
-  registerButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#6C5CE7",
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 30,
-    elevation: 3,
-  },
-  registerButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginRight: 8,
-  },
-});
