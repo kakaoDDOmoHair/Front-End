@@ -53,10 +53,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
     marginBottom: 20,
-    paddingHorizontal: 20,  
-    zIndex: 1000, // 다른 요소보다 위에 오도록 설정
-    paddingTop: 10,
+    backgroundColor: "#FFFFFF",
+    zIndex: 1000,
   },
   badge: {
     position: "absolute",

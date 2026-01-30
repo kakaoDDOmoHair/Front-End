@@ -1,13 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, SafeAreaView, View } from "react-native";
 
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import { ManualItem } from "../../../components/manual/StaffData";
 import { StaffManual } from "../../../components/manual/StaffManual";
 import api from "../../../constants/api";
 
 export default function ManualScreen() {
+  const [notificationCount] = useState(0);
   const [selectedManual, setSelectedManual] = useState<ManualItem | null>(null);
   const [manualList, setManualList] = useState<ManualItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -166,16 +169,18 @@ export default function ManualScreen() {
   }, [fetchManuals]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+      <Header notificationCount={notificationCount} />
       {loading ? (
         <ActivityIndicator size="large" color="#E0D5FF" style={{ flex: 1 }} />
       ) : (
         <StaffManual
-          manualList={manualList} // API로 가져온 리스트
-          selectedManual={selectedManual} // 상세 내용 (파싱됨)
-          onSelect={handleSelectManual} // 상세 조회 함수 연결
+          manualList={manualList}
+          selectedManual={selectedManual}
+          onSelect={handleSelectManual}
         />
       )}
-    </View>
+      <Footer />
+    </SafeAreaView>
   );
 }

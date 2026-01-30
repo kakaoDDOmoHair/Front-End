@@ -12,6 +12,8 @@ import {
   View,
 } from "react-native";
 
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/BossInfo";
 
@@ -64,6 +66,7 @@ const InfoSection = ({
 
 export default function BossInfoPage() {
   const router = useRouter();
+  const [notificationCount] = useState(0);
 
   const [storeInfo, setStoreInfo] = useState<StoreDetail | null>(null);
   const [ownerName, setOwnerName] = useState("사장님");
@@ -144,16 +147,15 @@ export default function BossInfoPage() {
   // 로딩 화면
   if (loading) {
     return (
-      <SafeAreaView
-        style={[
-          styles.container,
-          { justifyContent: "center", alignItems: "center" },
-        ]}
-      >
-        <ActivityIndicator size="large" color="#6C5CE7" />
-        <Text style={{ marginTop: 10, color: "#AFAFAF" }}>
-          정보를 불러오는 중입니다...
-        </Text>
+      <SafeAreaView style={styles.container}>
+        <Header notificationCount={notificationCount} />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color="#6C5CE7" />
+          <Text style={{ marginTop: 10, color: "#AFAFAF" }}>
+            정보를 불러오는 중입니다...
+          </Text>
+        </View>
+        <Footer />
       </SafeAreaView>
     );
   }
@@ -162,13 +164,7 @@ export default function BossInfoPage() {
   if (!storeInfo) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={28} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>사업자 정보</Text>
-          <View style={{ width: 28 }} />
-        </View>
+        <Header notificationCount={notificationCount} />
         <View
           style={{
             flex: 1,
@@ -200,22 +196,16 @@ export default function BossInfoPage() {
             </Text>
           </TouchableOpacity>
         </View>
+        <Footer />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={28} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>사업자 정보</Text>
-        <View style={{ width: 28 }} />
-      </View>
-
+      <Header notificationCount={notificationCount} />
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.profileSummary}>
@@ -258,6 +248,7 @@ export default function BossInfoPage() {
           />
         </InfoSection>
       </ScrollView>
+      <Footer />
     </SafeAreaView>
   );
 }

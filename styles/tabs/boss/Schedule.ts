@@ -4,7 +4,7 @@ const { width } = Dimensions.get("window");
 
 export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
-  scrollContainer: { paddingHorizontal: 20, paddingBottom: 120 },
+  scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   sectionTitle: {
     fontSize: 25,
     fontWeight: "600",

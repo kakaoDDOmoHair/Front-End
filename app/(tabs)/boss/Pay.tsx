@@ -8,6 +8,7 @@ import {
   Linking,
   Modal,
   ScrollView,
+  SafeAreaView,
   Text,
   TouchableOpacity,
   View,
@@ -408,13 +409,17 @@ const Pay: React.FC = () => {
 
   if (loading)
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#A28BFF" />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <Header notificationCount={3} />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color="#A28BFF" />
+        </View>
+        <Footer />
+      </SafeAreaView>
     );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Header notificationCount={3} />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
@@ -641,7 +646,7 @@ const Pay: React.FC = () => {
       </Modal>
 
       <Footer />
-    </View>
+    </SafeAreaView>
   );
 };
 

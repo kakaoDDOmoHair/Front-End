@@ -7,6 +7,7 @@ import {
   Image,
   Platform,
   ScrollView,
+  SafeAreaView,
   Text,
   TouchableOpacity,
   View,
@@ -510,7 +511,7 @@ const WorkerPay: React.FC = () => {
   }, [history, currentMonth]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {!isRequestedToday ? (
         <Header notificationCount={1} />
       ) : (
@@ -779,7 +780,7 @@ const WorkerPay: React.FC = () => {
       </ScrollView>
 
       <Footer />
-    </View>
+    </SafeAreaView>
   );
 };
 
