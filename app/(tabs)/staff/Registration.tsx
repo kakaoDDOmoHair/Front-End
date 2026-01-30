@@ -3,14 +3,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { BankSelectModal } from "../../../components/common/BankSelectModal";
 import { CustomInput } from "../../../components/common/CustomInput";
@@ -152,6 +152,40 @@ export default function WorkerRegistrationScreen() {
 
       if (response.status === 200 || response.status === 201) {
         const responseData = response.data || "";
+        if (typeof responseData === "object") {
+          const storePayload =
+            responseData?.data?.store ||
+            responseData?.store ||
+            responseData?.data?.storeInfo ||
+            responseData?.storeInfo ||
+            responseData?.data ||
+            responseData;
+          const storeInfo = {
+            latitude:
+              storePayload?.latitude ??
+              storePayload?.lat ??
+              storePayload?.storeLat,
+            longitude:
+              storePayload?.longitude ??
+              storePayload?.lon ??
+              storePayload?.storeLon,
+            wifiInfo:
+              storePayload?.wifiInfo ??
+              storePayload?.wifi ??
+              storePayload?.wifiSsid,
+          };
+          if (
+            storeInfo.latitude !== undefined ||
+            storeInfo.longitude !== undefined ||
+            storeInfo.wifiInfo !== undefined
+          ) {
+            await AsyncStorage.setItem(
+              "joinedStoreInfo",
+              JSON.stringify(storeInfo),
+            );
+          }
+        }
+
         const storeIdMatch = String(responseData).match(/ID: (\d+)/);
         const storeId = storeIdMatch ? storeIdMatch[1] : null;
 

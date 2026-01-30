@@ -27,7 +27,7 @@ export const styles = StyleSheet.create({
     marginBottom: 25,
   },
   label: {
-    fontSize: 14,
+    fontSize: 18,
     color: "#333",
     marginBottom: 8,
     marginTop: 10,
@@ -91,7 +91,7 @@ export const styles = StyleSheet.create({
     marginRight: 10,
   },
   submitButtonText: {
-    color: "#000",
+    color: "#9747FF",
     fontSize: 15,
     fontWeight: "bold",
   },

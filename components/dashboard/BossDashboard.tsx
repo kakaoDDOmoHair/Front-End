@@ -3,6 +3,38 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ScheduleDay, Worker } from './Data';
 
+export interface TodayAttendanceItem {
+  userId: number;
+  name: string;
+  status: 'ON' | 'OFF' | 'LATE' | 'ABSENT';
+}
+
+const getStatusLabel = (status: TodayAttendanceItem['status']) => {
+  switch (status) {
+    case 'ON':
+      return '근무 중';
+    case 'LATE':
+      return '지각';
+    case 'ABSENT':
+      return '결근';
+    default:
+      return '퇴근';
+  }
+};
+
+const getStatusColor = (status: TodayAttendanceItem['status']) => {
+  switch (status) {
+    case 'ON':
+      return '#34C759';
+    case 'LATE':
+      return '#FFCC00';
+    case 'ABSENT':
+      return '#FF3B30';
+    default:
+      return '#BDBDBD';
+  }
+};
+
 // 1. 근무자 카드
 export const WorkerCard = ({ data }: { data: Worker }) => (
   <View style={compStyles.card}>
@@ -17,43 +49,100 @@ export const WorkerCard = ({ data }: { data: Worker }) => (
   </View>
 );
 
+export const TodayAttendanceCard = ({
+  data,
+  totalPay,
+}: {
+  data: TodayAttendanceItem[];
+  totalPay: number;
+}) => (
+  <View style={[compStyles.card, compStyles.todayCard]}>
+    <Text style={compStyles.cardTitle}>실시간 현황</Text>
+    <Text style={compStyles.cardSubText}>
+      예상 급여 {totalPay.toLocaleString()}원
+    </Text>
+    <View style={compStyles.todayList}>
+      {data.length === 0 ? (
+        <Text style={compStyles.emptyText}>오늘 근무자가 없습니다</Text>
+      ) : (
+        data.map((item) => (
+          <View key={item.userId} style={compStyles.todayRow}>
+            <Text style={compStyles.todayName}>{item.name}</Text>
+            <View style={compStyles.statusRow}>
+              <View
+                style={[
+                  compStyles.statusDot,
+                  { backgroundColor: getStatusColor(item.status) },
+                ]}
+              />
+              <Text style={compStyles.statusText}>
+                {getStatusLabel(item.status)}
+              </Text>
+            </View>
+          </View>
+        ))
+      )}
+    </View>
+  </View>
+);
+
 // 2. 시간표 카드
 export const ScheduleCard = ({ data }: { data: ScheduleDay }) => {
   
-  // 이름을 넣으면 맞는 스타일을 반환하는 도우미 함수
+  // 이름 기반으로 고정된 랜덤 색상 선택
   const getStaffStyle = (name: string) => {
-    switch (name) {
-      case '도홍': return compStyles.tagBlue;
-      case '현아': return compStyles.tagRed;
-      case '사장': return compStyles.tagBoss;
-      case '지운': return compStyles.tagPink;
-      case '준영': return compStyles.tagYellow;
-      default: return compStyles.tagBlue; // 그 외의 이름은 기본 파란색
+    const palette = [
+      compStyles.tagBlue,
+      compStyles.tagRed,
+      compStyles.tagBoss,
+      compStyles.tagPink,
+      compStyles.tagYellow,
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i += 1) {
+      hash = (hash * 31 + name.charCodeAt(i)) % palette.length;
     }
+    return palette[hash];
   };
 
   return (
     <View style={[compStyles.card, compStyles.scheduleCard]}>
       <Text style={compStyles.cardTitle}>{data.day}</Text>
       <View style={compStyles.divider} />
-      {data.schedules.map((item, idx) => (
-        <View key={idx} style={compStyles.scheduleRow}>
-          <View style={compStyles.timelineDot} />
-          <View>
-            <Text style={compStyles.scheduleTime}>{item.time}</Text>
-            <View style={compStyles.tagContainer}>
-              {item.staff.map((staff, sIdx) => (
-                <View key={sIdx} style={[
-                  compStyles.tag,
-                  getStaffStyle(staff)
-                ]}>
-                  <Text style={compStyles.tagText}>{staff}</Text>
-                </View>
-              ))}
+      {data.schedules.length === 0 ? (
+        <Text style={compStyles.emptyScheduleText}>일정 없음</Text>
+      ) : (
+        data.schedules
+          .slice()
+          .sort((a, b) => {
+            const getStartMinutes = (time: string) => {
+              const cleaned = time.replace(/\s/g, "");
+              const start = cleaned.split("~")[0]?.split("-")[0] || cleaned;
+              const [h, m] = start.split(":").map((v) => Number(v));
+              if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+              return h * 60 + m;
+            };
+            return getStartMinutes(a.time) - getStartMinutes(b.time);
+          })
+          .map((item, idx) => (
+          <View key={idx} style={compStyles.scheduleRow}>
+            <View style={compStyles.timelineDot} />
+            <View>
+              <Text style={compStyles.scheduleTime}>{item.time}</Text>
+              <View style={compStyles.tagContainer}>
+                {item.staff.map((staff, sIdx) => (
+                  <View key={sIdx} style={[
+                    compStyles.tag,
+                    getStaffStyle(staff)
+                  ]}>
+                    <Text style={compStyles.tagText}>{staff}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           </View>
-        </View>
-      ))}
+        ))
+      )}
     </View>
   );
 };
@@ -88,6 +177,12 @@ const compStyles = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   statusText: { fontSize: 13, color: '#000', fontWeight: '600' },
   
+  todayCard: { width: 280, height: 'auto' },
+  todayList: { gap: 8 },
+  todayRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  todayName: { fontSize: 14, fontWeight: '600', color: '#000' },
+  emptyText: { fontSize: 13, color: '#AFAFAF' },
+
   scheduleCard: { width: 280, height: 'auto', justifyContent: 'flex-start' },
   divider: { height: 1, marginVertical: 15 },
   scheduleRow: { flexDirection: 'row', marginBottom: 15,paddingLeft: 15, position: 'relative' },
@@ -101,6 +196,7 @@ const compStyles = StyleSheet.create({
   tagPink: { backgroundColor: '#E0D5FF' },
   tagYellow: { backgroundColor: '#ECE8BC' },
   tagText: { fontSize: 12, fontWeight: '600', color: '#000' },
+  emptyScheduleText: { fontSize: 13, color: '#AFAFAF' },
 
   tabItem: { alignItems: 'center' },
   tabLabel: { fontSize: 12, marginTop: 4, color: '#000000' },
