@@ -27,7 +27,7 @@ export const styles = StyleSheet.create({
     marginRight: 40,
   },
 
-  scrollContainer: { paddingBottom: 120 },
+  scrollContainer: { paddingBottom: 100 },
   mainTitle: {
     fontSize: 22,
     fontWeight: "bold",

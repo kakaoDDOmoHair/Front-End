@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import {
   Alert,
-  Image,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -153,29 +152,11 @@ export const BossManual = ({
     );
   }
 
-  // --- 목록 화면 ---
+  // --- 목록 화면 (헤더/푸터는 페이지에서 공통 컴포넌트로 처리) ---
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-
-      <View style={styles.header}>
-        <Image
-          source={require("../../assets/images/logo.png")}
-          style={{ width: 90, height: 70 }}
-          resizeMode="contain"
-        />
-        <TouchableOpacity onPress={() => router.push("./notification")}>
-          <View style={{ position: "relative" }}>
-            <Ionicons name="notifications" size={24} color="#D1C4E9" />
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>2</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
-
+    <View style={{ flex: 1 }}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>매뉴얼 관리</Text>
@@ -224,6 +205,6 @@ export const BossManual = ({
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };

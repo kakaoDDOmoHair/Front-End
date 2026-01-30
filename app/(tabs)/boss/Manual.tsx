@@ -1,14 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, SafeAreaView, View } from "react-native";
 
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import { ManualItem } from "../../../components/manual/BossData";
 import { BossManual } from "../../../components/manual/BossManual";
 import api from "../../../constants/api";
 import { BossManualForm } from "./BossManualForm";
 
 export default function ManualScreen() {
+  const [notificationCount] = useState(0);
   const [selectedManual, setSelectedManual] = useState<ManualItem | null>(null);
   const [manualList, setManualList] = useState<ManualItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -202,7 +205,8 @@ export default function ManualScreen() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+      <Header notificationCount={notificationCount} />
       {loading ? (
         <ActivityIndicator size="large" color="#E0D5FF" style={{ flex: 1 }} />
       ) : (
@@ -218,6 +222,7 @@ export default function ManualScreen() {
           onDelete={handleDelete}
         />
       )}
-    </View>
+      <Footer />
+    </SafeAreaView>
   );
 }

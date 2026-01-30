@@ -25,6 +25,8 @@ import {
   BossProfileData,
   BossUsersMeResponse,
 } from "../../../components/profile/BossData";
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import BossProfile from "../../../components/profile/BossProfile";
 import api from "../../../constants/api";
 import { modalStyles, styles } from "../../../styles/tabs/boss/Profile";
@@ -48,6 +50,7 @@ export default function ProfileScreen() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
+  const [notificationCount] = useState(0);
   // --- 유저 정보 상태 ---
   const [username, setUsername] = useState("");
 
@@ -250,23 +253,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/logo.png")}
-          style={{ width: 90, height: 70 }}
-          resizeMode="contain"
-        />
-        <TouchableOpacity onPress={() => router.push("./notification")}>
-          <View style={{ position: "relative" }}>
-            <Ionicons name="notifications" size={24} color="#D1C4E9" />
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>2</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
-
+      <Header notificationCount={notificationCount} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
       >
@@ -328,6 +315,7 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={18} color="#AFAFAF" />
         </TouchableOpacity>
       </ScrollView>
+      <Footer />
 
       {/* 1. 비밀번호 변경 모달 */}
       <Modal visible={isChangeModalVisible} transparent animationType="slide">

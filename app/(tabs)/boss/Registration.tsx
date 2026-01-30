@@ -22,11 +22,10 @@ import {
   View,
 } from "react-native";
 
-// 공통 컴포넌트 임포트
+// 공통 컴포넌트 임포트 (매장 등록: 헤더만, 푸터 없음)
 import { BankSelectModal } from "../../../components/common/BankSelectModal";
 import { CustomDatePicker } from "../../../components/common/CustomDatePicker";
 import { CustomInput } from "../../../components/common/CustomInput";
-import Footer from "../../../components/common/Footer";
 import { FormSection } from "../../../components/common/FormSection";
 import Header from "../../../components/common/Header";
 import { SideButton } from "../../../components/common/SideButton";
@@ -455,8 +454,6 @@ export default function StoreRegistrationScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      <Footer />
 
       {/* 모달 레이어들 */}
       <BankSelectModal

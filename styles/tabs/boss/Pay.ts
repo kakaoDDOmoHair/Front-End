@@ -8,7 +8,7 @@ export const styles = StyleSheet.create({
   },
   scrollContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 120,
+    paddingBottom: 100,
   },
 
   // 알바생 선택 탭

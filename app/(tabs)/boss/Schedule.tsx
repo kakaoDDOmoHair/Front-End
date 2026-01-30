@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   ScrollView,
+  SafeAreaView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -218,10 +219,10 @@ const AttendancePage: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Header notificationCount={5} />
       <ScrollView
-        contentContainerStyle={[styles.scrollContainer, { paddingBottom: 150 }]}
+        contentContainerStyle={[styles.scrollContainer, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -469,7 +470,7 @@ const AttendancePage: React.FC = () => {
         onClose={() => setShowCalendar(false)}
       />
       <Footer />
-    </View>
+    </SafeAreaView>
   );
 };
 
