@@ -10,11 +10,11 @@ import {
   View,
 } from 'react-native';
 
-  // 데이터 및 컴포넌트 임포트
-  import { BossNotificationItem } from '@/components/notification/BossNotification';
-import { NOTIFICATIONS as INITIAL_DATA, NotificationItemData } from '../../../components/notification/StaffData';
-import { NotificationItem } from '../../../components/notification/StaffNotification';
-import { styles } from '../../../styles/tabs/staff/Notification';
+  import { BossNotificationItem } from "@/components/notification/BossNotification";
+import Footer from "../../../components/common/Footer";
+import { NOTIFICATIONS as INITIAL_DATA, NotificationItemData } from "../../../components/notification/StaffData";
+import { NotificationItem } from "../../../components/notification/StaffNotification";
+import { styles } from "../../../styles/tabs/staff/Notification";
 
   export default function NotificationScreen() {
     const router = useRouter();
@@ -46,19 +46,8 @@ import { styles } from '../../../styles/tabs/staff/Notification';
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        
-        {/* 헤더: 이미지와 동일하게 뒤로가기, 타이틀, 닫기 버튼 배치 */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-            <Ionicons name="chevron-back" size={26} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>알림 센터</Text>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent} 
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
         >
           {/* 오늘 섹션 */}
@@ -111,6 +100,7 @@ import { styles } from '../../../styles/tabs/staff/Notification';
             </View>
           )}
         </ScrollView>
+        <Footer />
       </SafeAreaView>
     );
   }
