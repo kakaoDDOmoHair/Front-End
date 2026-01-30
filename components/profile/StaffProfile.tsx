@@ -6,6 +6,8 @@ import { StaffProfileData } from './StaffData';
 export default function StaffProfile({ data }: { data: StaffProfileData }) {
   if (!data) return null;
 
+  const birthDateValue = data.birthday ?? '-';
+
   return (
     <View style={localStyles.container}>
       <View style={localStyles.avatarCircle}>
@@ -13,7 +15,7 @@ export default function StaffProfile({ data }: { data: StaffProfileData }) {
       </View>
       <Text style={localStyles.nameText}>{data.name}</Text>
       <Text style={localStyles.emailText}>{data.email}</Text>
-      <Text style={localStyles.dateText}>{data.joinDate}</Text>
+      <Text style={localStyles.dateText}>생년월일: {birthDateValue}</Text>
     </View>
   );
 }

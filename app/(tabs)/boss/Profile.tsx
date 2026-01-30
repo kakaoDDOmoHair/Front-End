@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Keyboard,
@@ -19,13 +21,32 @@ import {
   View,
 } from "react-native";
 
-import { BOSS_DATA } from "../../../components/profile/BossData";
+import {
+  BossProfileData,
+  BossUsersMeResponse,
+} from "../../../components/profile/BossData";
 import BossProfile from "../../../components/profile/BossProfile";
-import api from "../../../constants/api"; // 📡 API 모듈 import
+import api from "../../../constants/api";
 import { modalStyles, styles } from "../../../styles/tabs/boss/Profile";
+
+/** users/me 응답을 BossProfileData로 변환 */
+function mapUsersMeToBossProfile(res: BossUsersMeResponse): BossProfileData {
+  const roleDisplay =
+    res.role === "OWNER" || res.role === "BOSS" ? "사장님" : res.role ?? "사장님";
+  return {
+    name: res.name ?? "",
+    email: res.email ?? "",
+    role: roleDisplay,
+  };
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
+
+  // --- 프로필 데이터 (users/me API) ---
+  const [profileData, setProfileData] = useState<BossProfileData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   // --- 유저 정보 상태 ---
   const [username, setUsername] = useState("");
@@ -64,6 +85,75 @@ export default function ProfileScreen() {
       }
     };
     loadUser();
+  }, []);
+
+  const getAuthHeader = async () => {
+    let token: string | null = null;
+    try {
+      if (Platform.OS === "web") token = localStorage.getItem("user_token");
+      else {
+        token = await SecureStore.getItemAsync("user_token");
+        if (!token) token = await AsyncStorage.getItem("user_token");
+      }
+    } catch (_) {}
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const clearTokenAndRedirectToLogin = async () => {
+    try {
+      if (Platform.OS === "web") localStorage.removeItem("user_token");
+      else {
+        await SecureStore.deleteItemAsync("user_token");
+        await AsyncStorage.removeItem("user_token");
+      }
+    } catch (_) {}
+    router.replace("/(auth)/Login");
+  };
+
+  // --- users/me API 호출 (사장님 이름, 이메일, 역할 등) ---
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchMe = async () => {
+      setProfileLoading(true);
+      setProfileError(null);
+      try {
+        const storedUsername = await AsyncStorage.getItem("username");
+        if (!storedUsername?.trim()) {
+          if (!cancelled) {
+            setProfileError("로그인 정보를 찾을 수 없습니다.");
+            setProfileData(null);
+          }
+          return;
+        }
+        const headers = await getAuthHeader();
+        const { data } = await api.get<BossUsersMeResponse>(
+          "/api/v1/users/me",
+          { params: { username: storedUsername }, headers }
+        );
+        if (!cancelled) {
+          setProfileData(mapUsersMeToBossProfile(data));
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        const status = err.response?.status;
+        if (status === 401) {
+          clearTokenAndRedirectToLogin();
+          return;
+        }
+        setProfileError(
+          err.response?.data?.message ?? "프로필을 불러오지 못했습니다."
+        );
+        setProfileData(null);
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    };
+
+    fetchMe();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ✅ 초기화 함수: 비밀번호 변경
@@ -121,40 +211,38 @@ export default function ProfileScreen() {
     }
   };
 
-  // 📡 회원 탈퇴 API 호출
+  // 📡 회원 탈퇴 API (DELETE /api/v1/users/withdraw) - 외래키 정리 후 사용자 삭제 처리됨
   const handleWithdrawal = async () => {
     if (!withdrawPassword || !isAgreed) return;
+    if (!username?.trim()) {
+      Alert.alert("알림", "로그인 정보를 찾을 수 없습니다.");
+      return;
+    }
 
     try {
-      // DELETE 메서드에 body를 보낼 때는 { data: { ... } } 형태로 보내야 함 (Axios 규격)
       const response = await api.delete("/api/v1/users/withdraw", {
-        data: {
-          username: username,
-          password: withdrawPassword,
-        },
+        data: { username, password: withdrawPassword },
       });
 
-      if (response.data.status === "success") {
+      if (response.status === 200 && response.data?.status === "success") {
         setWithdrawModalVisible(false);
-        setWithdrawSuccessVisible(true); // 성공 모달 띄우기
+        setWithdrawSuccessVisible(true);
         resetWithdrawInputs();
-
-        // 로컬 스토리지 비우기
         await AsyncStorage.clear();
       }
     } catch (error: any) {
-      console.error("회원 탈퇴 실패:", error.response?.data);
       const status = error.response?.status;
+      const data = error.response?.data;
+      const message = data?.message;
 
       if (status === 400 || status === 401) {
-        setWithdrawPwError("비밀번호가 일치하지 않습니다.");
-      } else if (status === 409) {
-        Alert.alert(
-          "탈퇴 불가",
-          "미지급된 급여가 남아있어 탈퇴할 수 없습니다.",
+        setWithdrawPwError(
+          message || "비밀번호가 일치하지 않습니다."
         );
+      } else if (status === 409) {
+        Alert.alert("탈퇴 불가", message || "미지급된 급여가 남아있어 탈퇴할 수 없습니다.");
       } else {
-        Alert.alert("오류", "회원 탈퇴 처리에 실패했습니다.");
+        Alert.alert("오류", message || "회원 탈퇴 처리에 실패했습니다.");
       }
     }
   };
@@ -182,7 +270,34 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
       >
-        <BossProfile data={BOSS_DATA} />
+        {profileLoading ? (
+          <View
+            style={[
+              styles.menuItem,
+              { alignItems: "center", paddingVertical: 32 },
+            ]}
+          >
+            <ActivityIndicator size="large" color="#9747FF" />
+            <Text style={{ marginTop: 12, fontSize: 14, color: "#AFAFAF" }}>
+              프로필 불러오는 중...
+            </Text>
+          </View>
+        ) : profileError ? (
+          <View
+            style={[
+              styles.menuItem,
+              { alignItems: "center", paddingVertical: 24 },
+            ]}
+          >
+            <Text
+              style={{ fontSize: 14, color: "#999", textAlign: "center" }}
+            >
+              {profileError}
+            </Text>
+          </View>
+        ) : profileData ? (
+          <BossProfile data={profileData} />
+        ) : null}
 
         <Text style={styles.sectionTitle}>매장 기록</Text>
         {/* 사업자 정보 페이지로 이동 */}
@@ -384,11 +499,10 @@ export default function ProfileScreen() {
               { alignItems: "center", paddingVertical: 40 },
             ]}
           >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={60}
-              color="#9747FF"
-              style={{ marginBottom: 15 }}
+            <Image
+              source={require("../../../assets/images/check.png")}
+              style={{ width: 60, height: 60, marginBottom: 15 }}
+              resizeMode="contain"
             />
             <Text style={modalStyles.successTitle}>변경 완료</Text>
             <Text style={modalStyles.successDesc}>
@@ -401,7 +515,7 @@ export default function ProfileScreen() {
                 router.replace("/(auth)/Login");
               }} // 재로그인 유도
             >
-              <Text style={modalStyles.confirmBtnText}>확인 (재로그인)</Text>
+              <Text style={modalStyles.confirmBtnText}>확인</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -533,17 +647,21 @@ export default function ProfileScreen() {
             ]}
           >
             <View style={modalStyles.doorCircle}>
-              <Ionicons name="exit-outline" size={65} color="#E0D5FF" />
+              <Image
+                source={require("../../../assets/images/door.png")}
+                style={{ width: 65, height: 65 }}
+                resizeMode="contain"
+              />
             </View>
             <Text style={modalStyles.successTitle}>탈퇴 완료</Text>
             <Text style={modalStyles.successDesc}>
-              이용해 주셔서 감사합니다.
+              {profileData?.name ?? "회원"}님, 이용해 주셔서 감사합니다.
             </Text>
             <TouchableOpacity
               style={modalStyles.confirmBtn}
               onPress={() => {
                 setWithdrawSuccessVisible(false);
-                router.replace("/(auth)/Login");
+                clearTokenAndRedirectToLogin();
               }}
             >
               <Text style={modalStyles.confirmBtnText}>확인</Text>

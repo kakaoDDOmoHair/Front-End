@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
 import {
     Alert,
@@ -58,6 +59,36 @@ export default function WorkerRegistrationScreen() {
   }, []);
 
   // --- 2. API 호출 함수 섹션 ---
+
+  const getAuthHeader = async () => {
+    let token: string | null = null;
+    try {
+      if (Platform.OS === "web") token = localStorage.getItem("user_token");
+      else {
+        token = await SecureStore.getItemAsync("user_token");
+        if (!token) token = await AsyncStorage.getItem("user_token");
+      }
+    } catch (_) {}
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  /** 생년월일 등록 API (PATCH /api/v1/users/birth-date) - 6자리 YYMMDD */
+  const registerBirthDate = async () => {
+    const trimmed = birthDate.trim();
+    if (trimmed.length !== 6 || !/^\d{6}$/.test(trimmed)) return;
+    const username = await AsyncStorage.getItem("username");
+    if (!username) return;
+    try {
+      const headers = await getAuthHeader();
+      await api.patch(
+        "/api/v1/users/birth-date",
+        { username, birthDate: trimmed },
+        { headers }
+      );
+    } catch (_) {
+      // 실패해도 매장 가입 흐름은 유지 (생일은 나중에 프로필에서 등록 가능)
+    }
+  };
 
   const fetchStoreDetail = async (storeId: string) => {
     try {
@@ -189,6 +220,9 @@ export default function WorkerRegistrationScreen() {
         const storeIdMatch = String(responseData).match(/ID: (\d+)/);
         const storeId = storeIdMatch ? storeIdMatch[1] : null;
 
+        // 생년월일이 6자리로 입력되어 있으면 users/birth-date API로 저장 (프로필에서 users/me로 조회 가능)
+        await registerBirthDate();
+
         Alert.alert("가입 성공", "매장 가입이 완료되었습니다.", [
           {
             text: "확인",
@@ -207,6 +241,7 @@ export default function WorkerRegistrationScreen() {
 
       // 409(이미 가입) 혹은 500(서버 내부 충돌)인 경우 대시보드 이동 유도
       if (status === 409 || status === 500) {
+        await registerBirthDate();
         const msg =
           typeof errorData === "string"
             ? errorData
