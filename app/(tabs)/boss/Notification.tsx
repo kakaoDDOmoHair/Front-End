@@ -11,6 +11,7 @@ import {
     View,
 } from "react-native";
 
+import Footer from "../../../components/common/Footer";
 import { BOSS_NOTIFICATIONS as INITIAL_DATA } from "../../../components/notification/BossData";
 import { BossNotificationItem } from "../../../components/notification/BossNotification";
 import { styles } from "../../../styles/tabs/boss/Notification";
@@ -93,24 +94,15 @@ export default function BossNotificationScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={26} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>알림 센터</Text>
-        <View style={{ width: 26 }} /> {/* 좌우 균형을 위한 빈 공간 */}
-      </View>
-
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
       >
         {renderNotificationSection("오늘", todayNotifications)}
         {renderNotificationSection("어제", yesterdayNotifications)}
         {renderNotificationSection("이번 주", thisWeekNotifications)}
       </ScrollView>
+      <Footer />
     </SafeAreaView>
   );
 }
