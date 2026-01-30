@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '../../styles/tabs/staff/Contract';
-import { ContractData } from './StaffData';
+import { ContractData } from './ContractData';
 
 interface StaffContractProps {
   data: ContractData;
