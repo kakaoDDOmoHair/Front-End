@@ -1,22 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  SafeAreaView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import CustomDatePicker from "../../../components/common/CustomDatePicker";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/Schedule";
 
 interface Worker {
@@ -65,6 +67,7 @@ const AttendancePage: React.FC = () => {
     breakTime: "30",
     isPlanned: false,
   });
+  const notificationCount = useNotificationCount("boss");
 
   // --- 2. 유틸리티 로직 ---
   const weekDays = useMemo(() => {
@@ -104,21 +107,45 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  // ✅ [상태 색상] 가이드 매핑 복구
-  const getStatusColor = (userName: string) => {
+  // ✅ [상태 색상] 백엔드 attendances/today 기준 — 이름 또는 userId로 매칭
+  const getStatusColor = (userName: string, userId?: number) => {
     if (!Array.isArray(realTimeAttendances)) return "#BDBDBD";
     const user = realTimeAttendances.find(
-      (u) => u.name.trim() === userName.trim(),
+      (u) =>
+        u.name.trim() === userName.trim() ||
+        (userId != null && userId !== 0 && u.userId === userId),
     );
     switch (user?.status) {
       case "ON":
-        return "#00E676"; // 정상 (녹색)
+        return "#00E676"; // 근무중 (녹색)
       case "LATE":
-        return "#FFEB3B"; // 지각 (노랑)
+        return "#FFEB3B"; // 지각(근무중) (노랑)
       case "ABSENT":
         return "#FF1744"; // 결근 (빨강)
+      case "OFF":
       default:
-        return "#BDBDBD"; // 미출근 (회색)
+        return "#BDBDBD"; // 근무날아님 (회색)
+    }
+  };
+
+  // ✅ [상태 문구] 백엔드에서 받은 상태를 그대로 표시 (근무중, 지각(근무중), 결근, 근무날아님)
+  const getStatusLabel = (userName: string, userId?: number): string => {
+    if (!Array.isArray(realTimeAttendances)) return "근무날아님";
+    const user = realTimeAttendances.find(
+      (u) =>
+        u.name.trim() === userName.trim() ||
+        (userId != null && userId !== 0 && u.userId === userId),
+    );
+    switch (user?.status) {
+      case "ON":
+        return "근무중";
+      case "LATE":
+        return "지각(근무중)";
+      case "ABSENT":
+        return "결근";
+      case "OFF":
+      default:
+        return "근무날아님";
     }
   };
 
@@ -136,18 +163,73 @@ const AttendancePage: React.FC = () => {
     }
   }, []);
 
-  const fetchTodayStatus = useCallback(async (id: number) => {
-    try {
-      const headers = await getAuthHeader();
-      const response = await api.get("/api/v1/attendances/today", {
-        params: { storeId: id },
-        headers,
-      });
-      setRealTimeAttendances(response.data?.data?.list || []);
-    } catch (error) {
-      setRealTimeAttendances([]);
-    }
+  // API 응답을 RealTimeStatus[] 로 통일 (필드명·대소문자 차이 흡수)
+  const mapTodayAttendancesToStatus = useCallback((raw: unknown): RealTimeStatus[] => {
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray((raw as any)?.list)
+        ? (raw as any).list
+        : Array.isArray((raw as any)?.data)
+          ? (raw as any).data
+          : [];
+    return list.map((item: any) => {
+      const name =
+        String(item.name ?? item.userName ?? item.workerName ?? "").trim() || "-";
+      const uid = Number(item.userId ?? item.id ?? 0);
+      let status = String(item.status ?? item.attendanceStatus ?? "").toUpperCase();
+      if (status !== "ON" && status !== "OFF" && status !== "LATE" && status !== "ABSENT") {
+        if (["PRESENT", "IN", "WORKING"].includes(status)) status = "ON";
+        else if (["LATE"].includes(status)) status = "LATE";
+        else if (["ABSENT", "MISSING"].includes(status)) status = "ABSENT";
+        else status = "OFF";
+      }
+      return { userId: uid, name, status: status as RealTimeStatus["status"] };
+    });
   }, []);
+
+  const fetchTodayStatus = useCallback(
+    async (id: number) => {
+      try {
+        const headers = await getAuthHeader();
+        const response = await api.get("/api/v1/attendances/today", {
+          params: { storeId: id },
+          headers,
+        });
+        const data = response.data;
+        const rawList =
+          data?.data?.list ??
+          data?.data ??
+          data?.list ??
+          data?.attendances ??
+          data?.workers ??
+          (Array.isArray(data) ? data : []);
+        const list = Array.isArray(rawList) ? rawList : [];
+        const mapped = mapTodayAttendancesToStatus(list);
+
+        // 백엔드 응답 확인용 콘솔 (개발 시에만)
+        if (__DEV__) {
+          console.log("[attendances/today] 응답 전체 response.data:", JSON.stringify(data, null, 2));
+          console.log("[attendances/today] 추출한 rawList 개수:", list.length);
+          if (list.length > 0) {
+            list.forEach((item: any, i: number) => {
+              console.log(
+                `[attendances/today] raw[${i}] name=${item.name ?? item.userName ?? item.workerName}, userId=${item.userId ?? item.id}, status(원본)=${item.status ?? item.attendanceStatus ?? "(없음)"}`,
+              );
+            });
+            console.log("[attendances/today] 매핑 결과 mapped:", JSON.stringify(mapped, null, 2));
+          } else {
+            console.log("[attendances/today] rawList 비어 있음 → 매핑 결과도 빈 배열");
+          }
+        }
+
+        setRealTimeAttendances(mapped);
+      } catch (error) {
+        if (__DEV__) console.warn("[attendances/today] 조회 실패", error);
+        setRealTimeAttendances([]);
+      }
+    },
+    [mapTodayAttendancesToStatus],
+  );
 
   useEffect(() => {
     const initData = async () => {
@@ -172,11 +254,31 @@ const AttendancePage: React.FC = () => {
     initData();
   }, [selectedDate, fetchWeeklySchedule, fetchTodayStatus]);
 
+  // 알바생 출근/퇴근 실시간 반영: 화면 포커스 시 즉시 재조회
+  useFocusEffect(
+    useCallback(() => {
+      if (currentStoreId) fetchTodayStatus(currentStoreId);
+    }, [currentStoreId, fetchTodayStatus])
+  );
+
+  // 같은 화면에 있는 동안 5초마다 출퇴근 목록 재조회
+  useEffect(() => {
+    if (!currentStoreId) return;
+    const interval = setInterval(() => fetchTodayStatus(currentStoreId), 5000);
+    return () => clearInterval(interval);
+  }, [currentStoreId, fetchTodayStatus]);
+
   // --- 4. 필터링 및 핸들러 ---
   const filteredSchedules = useMemo(() => {
     const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
     const currentDay = dayNames[new Date(selectedDate).getDay()];
-    return weeklySchedules.filter((item) => item.day === currentDay);
+    const byDay = weeklySchedules.filter((item) => item.day === currentDay);
+    const isDeletedSlot = (item: ScheduleItem) => {
+      const s = item.startTime ?? item.time?.split("~")?.[0]?.trim() ?? "";
+      const e = item.endTime ?? item.time?.split("~")?.[1]?.trim() ?? "";
+      return (s === "00:00" || s === "0:00") && (e === "00:00" || e === "0:00");
+    };
+    return byDay.filter((item) => !isDeletedSlot(item));
   }, [selectedDate, weeklySchedules]);
 
   const handleEditPress = (worker: Worker, item: ScheduleItem) => {
@@ -220,7 +322,7 @@ const AttendancePage: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header notificationCount={5} />
+      <Header notificationCount={notificationCount} />
       <ScrollView
         contentContainerStyle={[styles.scrollContainer, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
@@ -251,6 +353,7 @@ const AttendancePage: React.FC = () => {
                     {
                       backgroundColor: getStatusColor(
                         item.workers?.[0]?.name || "",
+                        item.workers?.[0]?.userId,
                       ),
                     },
                   ]}
@@ -322,7 +425,9 @@ const AttendancePage: React.FC = () => {
                 <View
                   style={[
                     styles.statusDot,
-                    { backgroundColor: getStatusColor(worker.name) },
+                    {
+                      backgroundColor: getStatusColor(worker.name, worker.userId),
+                    },
                   ]}
                 />
               </View>

@@ -4,24 +4,25 @@ import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // 👇 공통 컴포넌트
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 
 // 👇 대시보드 내부 컴포넌트 & 데이터
 import {
-  ScheduleCard
+    ScheduleCard
 } from "../../../components/dashboard/BossDashboard";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Dashboard";
@@ -64,7 +65,7 @@ export default function DashboardScreen() {
   const [userName, setUserName] = useState("사장님");
   const [currentStoreId, setCurrentStoreId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [notificationCount, setNotificationCount] = useState(3);
+  const notificationCount = useNotificationCount("boss");
 
   // 할 일 관련 상태
   const [todoText, setTodoText] = useState("");

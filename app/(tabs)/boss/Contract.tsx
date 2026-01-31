@@ -5,20 +5,22 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/Contract";
 
 // ✅ 데이터 모델 정의
@@ -91,6 +93,7 @@ const BossContract: React.FC<{
 
 export default function ContractScreen() {
   const router = useRouter();
+  const notificationCount = useNotificationCount("boss");
   const [contracts, setContracts] = useState<ContractData[]>([]);
   const [storeId, setStoreId] = useState<number | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
@@ -352,22 +355,11 @@ export default function ContractScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/logo.png")}
-          style={{ width: 90, height: 70 }}
-          resizeMode="contain"
-        />
-        <TouchableOpacity onPress={() => router.push("./notification")}>
-          <Ionicons name="notifications" size={24} color="#D1C4E9" />
-        </TouchableOpacity>
-      </View>
+      <Header notificationCount={notificationCount} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
       >
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>신규 계약 준비</Text>
@@ -438,6 +430,8 @@ export default function ContractScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Footer />
 
       {/* 모달 1: 등록 */}
       <Modal visible={isScanning} transparent={true} animationType="fade">

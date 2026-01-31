@@ -3,26 +3,29 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import { ContractData } from "../../../components/contract/ContractData";
 import { StaffContract } from "../../../components/contract/StaffContract";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/staff/Contract";
 
 export default function StaffContractScreen() {
   const router = useRouter();
+  const notificationCount = useNotificationCount("staff");
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedContract, setSelectedContract] = useState<ContractData | null>(
     null,
@@ -128,19 +131,12 @@ export default function StaffContractScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/logo.png")}
-          style={{ width: 90, height: 70 }}
-          resizeMode="contain"
-        />
-        <TouchableOpacity onPress={() => router.push("./notification")}>
-          <Ionicons name="notifications" size={24} color="#D1C4E9" />
-        </TouchableOpacity>
-      </View>
+      <Header notificationCount={notificationCount} />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>근로계약서</Text>
           {isLoading ? (
@@ -173,6 +169,8 @@ export default function StaffContractScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Footer />
 
       <Modal visible={modalVisible} transparent={true} animationType="slide">
         <View style={styles.modalOverlay}>
