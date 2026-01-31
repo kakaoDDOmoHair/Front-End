@@ -21,7 +21,8 @@ import Header from "../../../components/common/Header";
 
 // 👇 대시보드 내부 컴포넌트 & 데이터
 import {
-  ScheduleCard
+  ScheduleCard,
+  WorkerCard,
 } from "../../../components/dashboard/BossDashboard";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Dashboard";
@@ -44,17 +45,26 @@ interface TodayAttendanceStatus {
   userId: number;
   name: string;
   status: "ON" | "OFF" | "LATE" | "ABSENT";
+  time: string;
 }
 
 interface WeeklyScheduleApiItem {
   day: string;
   time: string;
   workers?: { scheduleId: number; name: string; breakTime: number }[];
+  names?: string[];
+  staff?: string[];
 }
 
 interface WeeklyScheduleDay {
   day: string;
   schedules: { time: string; staff: string[] }[];
+}
+
+interface MonthlySalaryItem {
+  name: string;
+  amount: number;
+  status: string;
 }
 
 export default function DashboardScreen() {
@@ -83,6 +93,10 @@ export default function DashboardScreen() {
   const [weeklySchedules, setWeeklySchedules] = useState<WeeklyScheduleDay[]>(
     [],
   );
+  const [monthlySalaries, setMonthlySalaries] = useState<MonthlySalaryItem[]>(
+    [],
+  );
+  const [prevMonthlyTotal, setPrevMonthlyTotal] = useState<number | null>(null);
 
   const getUsernameFromStorage = async () => {
     try {
@@ -137,6 +151,7 @@ export default function DashboardScreen() {
           fetchDashboardData(storeId),
           fetchTodayAttendances(storeId),
           fetchWeeklySchedules(storeId),
+          fetchMonthlySalaries(storeId),
         ]);
       } else {
         setCurrentStoreId(null);
@@ -193,16 +208,250 @@ export default function DashboardScreen() {
         headers,
       });
       const payload = response.data?.data || response.data;
+      console.log("📋 [attendances/today]", {
+        storeId,
+        hasToken: !!Object.keys(headers).length,
+        raw: payload,
+      });
       const list =
         payload?.list || payload?.attendances || payload?.items || [];
-      setTodayAttendances(Array.isArray(list) ? list : []);
-      const totalPay =
+      const normalized = Array.isArray(list) ? list : list ? [list] : [];
+      const formatTime = (value: any) => {
+        if (!value) return null;
+        if (typeof value === "number") {
+          const date = new Date(value);
+          if (!Number.isNaN(date.getTime())) {
+            const hours = String(date.getHours()).padStart(2, "0");
+            const minutes = String(date.getMinutes()).padStart(2, "0");
+            return `${hours}:${minutes}`;
+          }
+        }
+        const raw = String(value).trim();
+        if (!raw) return null;
+        const timeOnlyMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+        if (timeOnlyMatch) {
+          const hours = timeOnlyMatch[1].padStart(2, "0");
+          const minutes = timeOnlyMatch[2];
+          return `${hours}:${minutes}`;
+        }
+        const normalizedValue = raw.includes("T") ? raw : raw.replace(" ", "T");
+        const hasTimezone = /Z|[+-]\d{2}:?\d{2}$/.test(normalizedValue);
+        const date = new Date(hasTimezone ? normalizedValue : `${normalizedValue}Z`);
+        if (!Number.isNaN(date.getTime())) {
+          const hours = String(date.getHours()).padStart(2, "0");
+          const minutes = String(date.getMinutes()).padStart(2, "0");
+          return `${hours}:${minutes}`;
+        }
+        return null;
+      };
+      const mapped = normalized.map((item: any) => {
+        const rawStatus =
+          item?.status ??
+          item?.attendanceStatus ??
+          item?.attendance_status ??
+          item?.state ??
+          "";
+        const status = String(rawStatus).toUpperCase().trim();
+        const endTime =
+          item?.endTime ??
+          item?.checkOutTime ??
+          item?.check_out_time ??
+          item?.checkoutTime ??
+          item?.checkout_time ??
+          item?.end_time ??
+          null;
+        const startTime =
+          item?.startTime ??
+          item?.checkInTime ??
+          item?.check_in_time ??
+          item?.start_time ??
+          item?.workStartTime ??
+          item?.work_start_time ??
+          null;
+        const startLabel = formatTime(startTime);
+        const timeLabel = startLabel ? `${startLabel} ~ 현재` : "현재";
+        const hasStartToday = startLabel != null;
+        const isWorking =
+          !endTime &&
+          (status === "ON" ||
+            status === "LATE" ||
+            status === "WORKING" ||
+            status === "CHECKIN" ||
+            status === "CHECK_IN" ||
+            status === "IN" ||
+            hasStartToday);
+        const normalizedStatus: TodayAttendanceStatus["status"] = isWorking
+          ? status === "LATE"
+            ? "LATE"
+            : "ON"
+          : status === "ABSENT"
+            ? "ABSENT"
+            : "OFF";
+        return {
+          userId:
+            item?.userId ?? item?.user_id ?? item?.workerId ?? item?.id ?? 0,
+          name: item?.name ?? item?.workerName ?? item?.userName ?? "직원",
+          status: normalizedStatus,
+          time: timeLabel,
+        };
+      });
+      let workingOnly = mapped.filter(
+        (item: any) => item?.status === "ON" || item?.status === "LATE",
+      );
+
+      const parseTimeValue = (value: string | null) => {
+        if (!value) return null;
+        const [h, m] = value.split(":").map((v) => Number(v));
+        if (Number.isNaN(h) || Number.isNaN(m)) return null;
+        return h * 60 + m;
+      };
+
+      const parseScheduleRange = (value: string) => {
+        if (!value) return null;
+        const cleaned = value.replace(/\s/g, "");
+        const parts = cleaned.includes("~") ? cleaned.split("~") : cleaned.split("-");
+        if (parts.length < 2) return null;
+        const start = parseTimeValue(parts[0]);
+        const end = parseTimeValue(parts[1]);
+        if (start == null || end == null) return null;
+        return { start, end, timeLabel: value };
+      };
+
+      const todayKey = dayOrder[new Date().getDay()];
+      const todayLabel = dayLabelMap[todayKey] || todayKey;
+      const todaySchedule = weeklySchedules.find((d) => d.day === todayLabel);
+      const scheduleByName = new Map<
+        string,
+        { start: number; end: number; timeLabel: string }[]
+      >();
+      (todaySchedule?.schedules || []).forEach((item) => {
+        const range = parseScheduleRange(item.time);
+        if (!range) return;
+        (item.staff || []).forEach((name) => {
+          if (!name) return;
+          const list = scheduleByName.get(name) ?? [];
+          list.push(range);
+          scheduleByName.set(name, list);
+        });
+      });
+
+      if (scheduleByName.size > 0) {
+        const now = new Date();
+        const baseNowMinutes = now.getHours() * 60 + now.getMinutes();
+        const isPastRange = (
+          nowMinutes: number,
+          range: { start: number; end: number },
+        ) => {
+          let start = range.start;
+          let end = range.end;
+          let current = nowMinutes;
+          if (end <= start) {
+            end += 1440;
+            if (current < start) current += 1440;
+          }
+          return current >= end;
+        };
+        const isPastAllRanges = (
+          nowMinutes: number,
+          ranges: { start: number; end: number }[],
+        ) => ranges.every((range) => isPastRange(nowMinutes, range));
+
+        workingOnly = workingOnly.filter((item) => {
+          if (!item.name || item.name === "직원") return true;
+          const ranges = scheduleByName.get(item.name) ?? [];
+          if (ranges.length === 0) return true;
+          return !isPastAllRanges(baseNowMinutes, ranges);
+        });
+
+        workingOnly = workingOnly.map((item) => {
+          if (!item.name || item.name === "직원") return item;
+          const ranges = scheduleByName.get(item.name) ?? [];
+          if (ranges.length === 0) return item;
+          const earliest = ranges.slice().sort((a, b) => a.start - b.start)[0];
+          const actualStart = item.time ? item.time.split("~")[0]?.trim() : null;
+          const actualMinutes = parseTimeValue(actualStart ?? "");
+          if (actualMinutes != null && actualMinutes > earliest.start) {
+            return { ...item, status: "LATE" };
+          }
+          return { ...item, status: "ON" };
+        });
+
+        const presentNames = new Set(
+          workingOnly
+            .map((item) => item.name)
+            .filter((name) => name && name !== "직원"),
+        );
+        const absentList: TodayAttendanceStatus[] = [];
+        scheduleByName.forEach((ranges, name) => {
+          if (presentNames.has(name)) return;
+          if (!isPastAllRanges(baseNowMinutes, ranges)) return;
+          const earliest = ranges.slice().sort((a, b) => a.start - b.start)[0];
+          absentList.push({
+            userId: 0,
+            name,
+            status: "ABSENT",
+            time: `${earliest.timeLabel} ~ 결근`,
+          });
+        });
+        if (absentList.length > 0) {
+          workingOnly = [...workingOnly, ...absentList];
+        }
+      }
+
+      setTodayAttendances(workingOnly);
+
+      const workingPaySum = normalized.reduce((sum: number, item: any) => {
+        const rawStatus =
+          item?.status ??
+          item?.attendanceStatus ??
+          item?.attendance_status ??
+          item?.state ??
+          "";
+        const status = String(rawStatus).toUpperCase().trim();
+        const endTime =
+          item?.endTime ??
+          item?.checkOutTime ??
+          item?.check_out_time ??
+          item?.checkoutTime ??
+          item?.checkout_time ??
+          null;
+        const isWorking =
+          status === "ON" ||
+          status === "LATE" ||
+          status === "WORKING" ||
+          status === "CHECKIN" ||
+          status === "CHECK_IN" ||
+          status === "IN" ||
+          (!status && !endTime);
+        if (!isWorking) return sum;
+        const amountRaw =
+          item?.amount ??
+          item?.pay ??
+          item?.wage ??
+          item?.totalPay ??
+          item?.totalCost ??
+          item?.expectedPay ??
+          0;
+        const amount =
+          typeof amountRaw === "string"
+            ? Number(amountRaw.replace(/,/g, ""))
+            : Number(amountRaw);
+        return sum + (Number.isFinite(amount) ? amount : 0);
+      }, 0);
+
+      const payloadTotal =
+        payload?.totalWage ??
         payload?.totalPay ??
         payload?.totalCost ??
-        payload?.totalWage ??
         payload?.expectedPay ??
         0;
-      setTodayTotalPay(Number(totalPay) || 0);
+      const finalTotal =
+        Number(payload?.totalWage) > 0
+          ? Number(payload.totalWage)
+          : workingPaySum > 0
+            ? workingPaySum
+            : Number(payloadTotal) || 0;
+      setTodayTotalPay(finalTotal);
     } catch (error) {
       setTodayAttendances([]);
       setTodayTotalPay(0);
@@ -226,10 +475,17 @@ export default function DashboardScreen() {
         const items = list.filter((item) => item.day === day);
         return {
           day: dayLabelMap[day] || day,
-          schedules: items.map((item) => ({
-            time: item.time,
-            staff: (item.workers || []).map((w) => w.name),
-          })),
+          schedules: items.map((item) => {
+            const names =
+              item?.names ??
+              item?.staff ??
+              (item?.workers || []).map((w: any) => w?.name);
+            const staffList = Array.isArray(names) ? names : [];
+            return {
+              time: item.time,
+              staff: staffList.filter(Boolean),
+            };
+          }),
         };
       });
       setWeeklySchedules(grouped);
@@ -237,6 +493,77 @@ export default function DashboardScreen() {
       setWeeklySchedules(
         dayOrder.map((day) => ({ day: dayLabelMap[day] || day, schedules: [] })),
       );
+    }
+  };
+
+  const normalizeMonthlySalaryList = (payload: any): MonthlySalaryItem[] => {
+    const rawList =
+      payload?.list ||
+      payload?.items ||
+      payload?.content ||
+      payload?.payments ||
+      payload?.data?.list ||
+      payload?.data?.items ||
+      payload?.data?.content ||
+      payload?.data?.payments ||
+      payload;
+    const list = Array.isArray(rawList) ? rawList : rawList ? [rawList] : [];
+    return list.map((item: any) => {
+      const amountRaw =
+        item?.amount ??
+        item?.totalAmount ??
+        item?.totalPay ??
+        item?.totalWage ??
+        0;
+      const amount =
+        typeof amountRaw === "string"
+          ? Number(amountRaw.replace(/,/g, ""))
+          : Number(amountRaw);
+      return {
+        name: String(item?.name || item?.workerName || item?.userName || "-"),
+        amount: Number.isFinite(amount) ? amount : 0,
+        status: String(item?.status || "").toUpperCase(),
+      };
+    });
+  };
+
+  const fetchMonthlySalaries = async (storeId: number) => {
+    try {
+      const headers = await getAuthHeader();
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const response = await api.get("/api/v1/salary/monthly", {
+        params: { storeId, year, month },
+        headers,
+      });
+      const payload = response.data?.data ?? response.data;
+      const normalized = normalizeMonthlySalaryList(payload);
+      const sorted = normalized.sort((a, b) => {
+        const aPending = a.status === "REQUESTED";
+        const bPending = b.status === "REQUESTED";
+        if (aPending === bPending) return 0;
+        return aPending ? -1 : 1;
+      });
+      setMonthlySalaries(sorted);
+
+      const prevMonthDate = new Date(year, month - 2, 1);
+      const prevYear = prevMonthDate.getFullYear();
+      const prevMonth = prevMonthDate.getMonth() + 1;
+      const prevRes = await api.get("/api/v1/salary/monthly", {
+        params: { storeId, year: prevYear, month: prevMonth },
+        headers,
+      });
+      const prevPayload = prevRes.data?.data ?? prevRes.data;
+      const prevList = normalizeMonthlySalaryList(prevPayload);
+      const prevTotal = prevList.reduce(
+        (sum, item) => sum + (Number(item.amount) || 0),
+        0,
+      );
+      setPrevMonthlyTotal(prevTotal);
+    } catch (error) {
+      setMonthlySalaries([]);
+      setPrevMonthlyTotal(null);
     }
   };
 
@@ -319,6 +646,33 @@ export default function DashboardScreen() {
 
   const formatNumber = (num: number) =>
     num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const formatStatusLabel = (status: string) => {
+    switch (status) {
+      case "REQUESTED":
+        return "미정산";
+      case "PAID":
+      case "COMPLETED":
+        return "정산 완료";
+      default:
+        return status || "-";
+    }
+  };
+  const totalMonthlyPayable = monthlySalaries.reduce((sum, item) => {
+    const status = String(item.status || "").toUpperCase();
+    const isUnpaid =
+      status === "REQUESTED" || status === "WAITING" || status === "PENDING";
+    return isUnpaid ? sum + (Number(item.amount) || 0) : sum;
+  }, 0);
+  const totalMonthlyAccumulated = monthlySalaries.reduce(
+    (sum, item) => sum + (Number(item.amount) || 0),
+    0,
+  );
+  const growthRateLocal =
+    prevMonthlyTotal != null && prevMonthlyTotal > 0
+      ? ((totalMonthlyAccumulated - prevMonthlyTotal) / prevMonthlyTotal) * 100
+      : 0;
+  const growthDiffAmount =
+    prevMonthlyTotal != null ? totalMonthlyAccumulated - prevMonthlyTotal : 0;
   const weekSchedules =
     weeklySchedules.length > 0
       ? weeklySchedules
@@ -348,7 +702,7 @@ export default function DashboardScreen() {
         <Header notificationCount={notificationCount} />
         <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
           <Text style={{ fontSize: 25, fontWeight: "bold" }}>
-            반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text>님!
+            반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text> 님!👋
             👋
           </Text>
         </View>
@@ -401,7 +755,7 @@ export default function DashboardScreen() {
 
         <View style={styles.greetingContainer}>
           <Text style={styles.greetingText}>
-            반갑습니다, <Text style={styles.greetingName}>{userName}</Text>님!👋
+            반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
           </Text>
         </View>
 
@@ -428,27 +782,67 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>인건비 및 근무 현황</Text>
+          <Text style={styles.sectionTitle}>인건비 현황 </Text>
           <Text style={styles.dateText}>
             정산일 {stats.payDate.replace(/-/g, ".")}
           </Text>
           <View style={styles.costContainer}>
             <Text style={styles.costAmount}>
-              {formatNumber(stats.totalCost)}
+              {formatNumber(totalMonthlyAccumulated)}원
             </Text>
             <Text style={styles.costDesc}>
-              전월 대비{" "}
+              <Text>전월보다{" "}</Text>
               <Text
                 style={{
-                  color: stats.growthRate >= 0 ? "#FF4444" : "#4444FF",
+                  color: growthDiffAmount >= 0 ? "#FF4444" : "#4444FF",
                   fontWeight: "bold",
                 }}
               >
-                {stats.growthRate >= 0 ? "+ " : ""}
-                {stats.growthRate}%
-              </Text>{" "}
-              증가했습니다.
+                {formatNumber(Math.abs(growthDiffAmount))}
+              </Text>
+              원{" "}
+              {growthDiffAmount >= 0 ? "더 올랐습니다." : "줄었습니다."}
             </Text>
+          </View>
+
+          <View style={{ marginTop: 20 }}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>현재 근무 중인 직원</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{todayAttendances.length}명</Text>
+              </View>
+            </View>
+            {todayAttendances.length === 0 ? (
+              <View style={styles.emptySalaryContainer}>
+                <Text style={styles.emptySalaryText}>
+                  현재 근무 중인 직원이 없습니다.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScroll}
+              >
+                {todayAttendances.map((item, idx) => (
+                  <View key={`${item.userId}-${idx}`} style={{ marginRight: 12 }}>
+                    <WorkerCard
+                      data={{
+                        id: String(item.userId),
+                        name: item.name,
+                        time: item.time || "현재",
+                        status:
+                          item.status === "LATE"
+                            ? "late"
+                            : item.status === "ABSENT"
+                              ? "absent"
+                              : "working",
+                      }}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
 

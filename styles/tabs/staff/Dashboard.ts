@@ -57,6 +57,18 @@ export const styles = StyleSheet.create({
     color: "#000",
     textAlign: "center",
   },
+  salaryMetaText: {
+    fontSize: 14,
+    color: "#000",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  salaryNoteText: {
+    fontSize: 12,
+    color: "#AFAFAF",
+    textAlign: "center",
+    marginTop: 6,
+  },
   salaryDiff: { marginTop: 6, textAlign: "center" },
   salaryDiffRow: { flexDirection: "row", justifyContent: "center", gap: 6 },
   salaryDiffLabel: { fontSize: 14, color: "#000" , paddingTop: 10},
