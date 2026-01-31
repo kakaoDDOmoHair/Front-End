@@ -64,6 +64,22 @@ interface WeeklyScheduleDay {
   schedules: { time: string; staff: string[] }[];
 }
 
+interface MonthlySummary {
+  period: string;
+  amount: number | null;
+  totalHours: number | null;
+  hourlyWage: number | null;
+  year?: number;
+  month?: number;
+}
+
+interface EstimatedSalary {
+  period: string;
+  amount: number | null;
+  totalHours: number | null;
+}
+
+
 const normalizeWifiSsid = (value: string) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -92,6 +108,7 @@ const normalizeSsidForCompare = (value: string | null) => {
 
 const RELAXED_DISTANCE_M = 300;
 const ROUND_COMPARE_DECIMALS = 2;
+const MIN_HOURLY_WAGE = 10320;
 const roundCoord = (value: number, digits: number) => {
   const factor = Math.pow(10, digits);
   return Math.round(value * factor) / factor;
@@ -101,11 +118,19 @@ const extractAttendanceIdFromResponse = (data: any) => {
   return (
     data?.attendanceId ??
     data?.attendance_id ??
+    data?.attendanceID ??
     data?.data?.attendanceId ??
     data?.data?.attendance_id ??
+    data?.data?.attendanceID ??
     data?.result?.attendanceId ??
+    data?.result?.attendance_id ??
     null
   );
+};
+
+const toValidAttendanceId = (value: unknown) => {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
 };
 
 const safeGetWifiInfo = async () => {
@@ -238,12 +263,28 @@ export default function DashboardScreen() {
   const [weeklySchedules, setWeeklySchedules] = useState<WeeklyScheduleDay[]>(
     [],
   );
-  const [salaryEstimate, setSalaryEstimate] = useState<{
-    period: string;
-    amount: number;
-    totalHours: number | null;
-    diff: number | null;
-  } | null>(null);
+  const [monthlySummary, setMonthlySummary] = useState<MonthlySummary | null>(
+    null,
+  );
+  const [contractHourlyWage, setContractHourlyWage] = useState<number | null>(
+    null,
+  );
+  const [estimatedSalary, setEstimatedSalary] = useState<EstimatedSalary | null>(
+    null,
+  );
+  const salaryRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [localSessionStart, setLocalSessionStart] = useState<number | null>(null);
+  const [localSessionBaseHours, setLocalSessionBaseHours] = useState<number | null>(
+    null,
+  );
+  const [localSessionBaseAmount, setLocalSessionBaseAmount] = useState<number | null>(
+    null,
+  );
+  const [localPendingHours, setLocalPendingHours] = useState<number | null>(null);
+  const [localPendingAmount, setLocalPendingAmount] = useState<number | null>(null);
+  const localAccumKeyRef = useRef<string | null>(null);
 
   const loadCachedStoreInfo = async () => {
     try {
@@ -262,12 +303,150 @@ export default function DashboardScreen() {
     return Number.isFinite(num) ? num : null;
   };
 
+  const getAuthHeader = async () => {
+    try {
+      const token = await AsyncStorage.getItem("user_token");
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
+  const getMonthlyAccumKey = (uid: number, storeId: number) => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    return `staffLocalAccum:${uid}:${storeId}:${year}-${month}`;
+  };
+
+  const loadLocalAccum = async (uid: number, storeId: number) => {
+    try {
+      const key = getMonthlyAccumKey(uid, storeId);
+      localAccumKeyRef.current = key;
+      const raw = await AsyncStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const hours =
+        parsed?.hours !== undefined ? Number(parsed.hours) : null;
+      const amount =
+        parsed?.amount !== undefined ? Number(parsed.amount) : null;
+      if (Number.isFinite(hours)) setLocalPendingHours(hours);
+      if (Number.isFinite(amount)) setLocalPendingAmount(amount);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const saveLocalAccum = async (hours: number | null, amount: number | null) => {
+    try {
+      const key = localAccumKeyRef.current;
+      if (!key) return;
+      if (hours == null && amount == null) {
+        await AsyncStorage.removeItem(key);
+        return;
+      }
+      await AsyncStorage.setItem(
+        key,
+        JSON.stringify({ hours, amount, savedAt: Date.now() }),
+      );
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const getWeekStartDate = () => {
     const now = new Date();
     const day = now.getDay();
     const sunday = new Date(now);
     sunday.setDate(now.getDate() - day);
     return sunday.toISOString().split("T")[0];
+  };
+
+  const formatWorkHours = (hours: number | null | undefined) => {
+    if (hours == null || !Number.isFinite(hours)) return "-";
+    const wholeHours = Math.floor(hours);
+    const minutes = Math.round((hours - wholeHours) * 60);
+    return `${wholeHours}시간 ${minutes}분`;
+  };
+
+  const parseDateValue = (value: any) => {
+    if (!value) return null;
+    const raw = String(value);
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const extractHourlyWage = (items: any[]) => {
+    const pick = (val: any) => {
+      const num = Number(val);
+      return Number.isFinite(num) && num > 0 ? num : null;
+    };
+    for (const item of items) {
+      const found =
+        pick(item?.wage) ??
+        pick(item?.hourlyWage) ??
+        pick(item?.hourly_wage) ??
+        pick(item?.payPerHour) ??
+        pick(item?.pay_per_hour);
+      if (found != null) return found;
+    }
+    return null;
+  };
+
+  const computeMonthlySummary = (
+    items: any[],
+    now: Date,
+    fallbackWage: number | null,
+    working: boolean,
+    activeAttendanceId: number | null,
+  ) => {
+    let totalMs = 0;
+    for (const item of items) {
+      const start =
+        parseDateValue(item?.startTime) ||
+        parseDateValue(item?.checkInTime) ||
+        parseDateValue(item?.check_in_time);
+      if (!start) continue;
+      const end =
+        parseDateValue(item?.endTime) ||
+        parseDateValue(item?.checkOutTime) ||
+        parseDateValue(item?.check_out_time) ||
+        null;
+      if (end) {
+        if (end.getTime() >= start.getTime()) {
+          totalMs += end.getTime() - start.getTime();
+        }
+        continue;
+      }
+
+      const status = item?.status ?? item?.attendanceStatus ?? item?.state ?? null;
+      const itemAttendanceId = toValidAttendanceId(
+        item?.attendanceId ?? item?.attendance_id ?? item?.attendanceID ?? item?.id,
+      );
+      const isActiveRecord =
+        working &&
+        activeAttendanceId != null &&
+        itemAttendanceId != null &&
+        activeAttendanceId === itemAttendanceId;
+
+      if (isActiveRecord) {
+        if (now.getTime() >= start.getTime()) {
+          totalMs += now.getTime() - start.getTime();
+        }
+        continue;
+      }
+
+      // endTime 없는 과거 기록은 누적에서 제외 (서버 오류 등으로 인한 과대 계산 방지)
+      if (status === "ON" || status === "LATE") {
+        // If backend forgot to close but user isn't working, skip.
+      }
+    }
+    const totalHours = totalMs > 0 ? totalMs / 3600000 : 0;
+    const hourlyWage = extractHourlyWage(items) ?? fallbackWage ?? null;
+    const amount =
+      hourlyWage != null ? Math.floor(totalHours * hourlyWage) : null;
+    return { totalHours, hourlyWage, amount };
   };
 
   const dayOrder = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -337,27 +516,148 @@ export default function DashboardScreen() {
     }
   };
 
+  const fetchContractWage = async (storeId: number, uid: number) => {
+    try {
+      const headers = await getAuthHeader();
+      const response = await api.get("/api/v1/contracts", {
+        params: { storeId, page: 0, size: 50 },
+        headers,
+      });
+      const payload = response.data?.data ?? response.data;
+      const content = payload?.content || payload?.list || payload?.items || [];
+      const list = Array.isArray(content) ? content : [];
+      const nameKey = String(userName || "").trim();
+      const match = list.find(
+        (c: any) =>
+          c?.userId === uid ||
+          c?.workerId === uid ||
+          c?.worker_id === uid,
+      ) ??
+        (nameKey
+          ? list.find(
+              (c: any) =>
+                String(c?.workerName || "").trim() === nameKey ||
+                String(c?.name || "").trim() === nameKey,
+            )
+          : null);
+      const contractId = match?.contractId ?? match?.id ?? null;
+      let wage =
+        Number(match?.wage) ||
+        Number(match?.hourlyWage) ||
+        Number(match?.hourly_wage) ||
+        null;
+
+      if (contractId) {
+        try {
+          const detailRes = await api.get(`/api/v1/contracts/${contractId}`, {
+            headers,
+          });
+          const detail = detailRes.data?.data ?? detailRes.data;
+          const detailWage =
+            Number(detail?.wage) ||
+            Number(detail?.hourlyWage) ||
+            Number(detail?.hourly_wage) ||
+            null;
+          if (detailWage != null && Number.isFinite(detailWage)) {
+            wage = detailWage;
+          }
+        } catch (e) {
+          // ignore detail fallback
+        }
+      }
+
+      setContractHourlyWage(Number.isFinite(wage as number) ? wage : null);
+    } catch (e) {
+      setContractHourlyWage(null);
+    }
+  };
+
+  const fetchMonthlySummary = async (uid: number) => {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const response = await api.get("/api/v1/attendances/monthly", {
+        params: { userId: uid, year, month },
+      });
+      const payload = response.data?.data ?? response.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : payload?.data || payload?.list || payload?.items || [];
+      const fallbackWage =
+        extractHourlyWage(dailyAttendances) ??
+        extractHourlyWage(list) ??
+        contractHourlyWage;
+      const summary = computeMonthlySummary(
+        list,
+        now,
+        fallbackWage,
+        isWorking,
+        toValidAttendanceId(attendanceId),
+      );
+      setMonthlySummary({
+        period: `${year}년 ${month}월`,
+        amount: summary.amount,
+        totalHours: summary.totalHours,
+        hourlyWage: summary.hourlyWage,
+        year,
+        month,
+      });
+    } catch (e) {
+      setMonthlySummary(null);
+    }
+  };
+
   const fetchEstimatedSalary = async (storeId: number, uid: number) => {
     try {
       const now = new Date();
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
+      const headers = await getAuthHeader();
       const response = await api.get("/api/v1/salary/estimated", {
         params: { storeId, userId: uid, year, month },
+        headers,
       });
-      const payload = response.data?.data || response.data;
-      const amount = Number(payload?.amount) || 0;
-      const period = payload?.period || "";
-      setSalaryEstimate({
-        period,
-        amount,
-        totalHours:
-          payload?.totalHours !== undefined ? Number(payload.totalHours) : null,
-        diff: null,
+      const payload = response.data?.data ?? response.data;
+      const amount =
+        payload?.amount !== undefined ? Number(payload.amount) : null;
+      const totalHours =
+        payload?.totalHours !== undefined ? Number(payload.totalHours) : null;
+      setEstimatedSalary({
+        period: payload?.period || `${year}.${String(month).padStart(2, "0")}.01~`,
+        amount: Number.isFinite(amount as number) ? amount : null,
+        totalHours: Number.isFinite(totalHours as number) ? totalHours : null,
       });
     } catch (e) {
-      setSalaryEstimate(null);
+      setEstimatedSalary(null);
     }
+  };
+
+
+  const refreshSalaryViews = async (storeId: number, uid: number) => {
+    const runRefresh = async () => {
+      fetchMonthlySummary(uid);
+      await fetchEstimatedSalary(storeId, uid);
+    };
+
+    // 1) 즉시 반영 시도
+    await runRefresh();
+
+    // 2) 서버 반영 지연 대비 재조회 (최대 3회)
+    if (salaryRefreshTimeoutRef.current) {
+      clearTimeout(salaryRefreshTimeoutRef.current);
+    }
+    let attempts = 0;
+    const scheduleRetry = (delayMs: number) => {
+      salaryRefreshTimeoutRef.current = setTimeout(async () => {
+        attempts += 1;
+        await runRefresh();
+        if (attempts < 3) {
+          scheduleRetry(3000);
+        }
+      }, delayMs);
+    };
+    scheduleRetry(1500);
   };
 
   // ✅ 출근 상태/attendanceId 복원: attendanceId가 있을 때만 근무중으로 복원
@@ -387,35 +687,69 @@ export default function DashboardScreen() {
       });
 
       const payload = res.data?.data || res.data;
-      const list = Array.isArray(payload) ? payload : payload?.data || payload?.list || [];
+      const list = Array.isArray(payload)
+        ? payload
+        : payload?.data?.list ||
+          payload?.data?.items ||
+          payload?.data ||
+          payload?.list ||
+          payload?.items ||
+          [];
 
-      if (!Array.isArray(list) || list.length === 0) return;
+      if (!Array.isArray(list)) return null;
+      if (list.length === 0) {
+        setAttendanceId(null);
+        setIsWorking(false);
+        await AsyncStorage.removeItem("attendanceId");
+        return null;
+      }
 
       // AttendanceDto.AttendanceLog: { attendanceId, startTime, endTime, status, ... }
       // 출근중 후보: status=ON/LATE AND endTime is null
       const candidates = list
         .map((x: any) => ({
-          attendanceId: x?.attendanceId ?? x?.attendance_id ?? x?.id ?? null,
+          attendanceId:
+            x?.attendanceId ??
+            x?.attendance_id ??
+            x?.attendanceID ??
+            x?.id ??
+            null,
           status: x?.status ?? x?.attendanceStatus ?? x?.state ?? null,
-          endTime: x?.endTime ?? x?.checkOutTime ?? x?.check_out_time ?? null,
-          startTime: x?.startTime ?? x?.checkInTime ?? x?.check_in_time ?? null,
+          endTime:
+            x?.endTime ??
+            x?.end_time ??
+            x?.checkOutTime ??
+            x?.check_out_time ??
+            x?.checkoutTime ??
+            x?.checkout_time ??
+            null,
+          startTime:
+            x?.startTime ??
+            x?.start_time ??
+            x?.checkInTime ??
+            x?.check_in_time ??
+            null,
         }))
         .filter((x: any) => x.attendanceId != null);
 
       const on = candidates.find((x: any) => (x.status === "ON" || x.status === "LATE") && !x.endTime);
 
       if (on?.attendanceId) {
-        const idNum = Number(on.attendanceId);
-        if (Number.isFinite(idNum) && idNum > 0) {
+        const idNum = toValidAttendanceId(on.attendanceId);
+        if (idNum) {
           setAttendanceId(idNum);
           setIsWorking(true);
           await AsyncStorage.setItem("attendanceId", String(idNum));
-          return;
+          return idNum;
         }
       }
+      setAttendanceId(null);
+      setIsWorking(false);
+      await AsyncStorage.removeItem("attendanceId");
     } catch (e) {
       // ignore best-effort
     }
+    return null;
   };
 
   const initializeDashboard = async () => {
@@ -464,7 +798,12 @@ export default function DashboardScreen() {
       if (resolvedStoreId && resolvedUserId) {
         fetchDailyAttendances(resolvedStoreId, resolvedUserId);
         fetchWeeklySchedules(resolvedStoreId);
+        fetchContractWage(resolvedStoreId, resolvedUserId);
         fetchEstimatedSalary(resolvedStoreId, resolvedUserId);
+        loadLocalAccum(resolvedUserId, resolvedStoreId);
+      }
+      if (resolvedUserId) {
+        fetchMonthlySummary(resolvedUserId);
       }
     } catch (error) {
       console.error("데이터 로드 실패:", error);
@@ -526,6 +865,119 @@ export default function DashboardScreen() {
     const interval = setInterval(checkRealtimeStatus, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // 근무 중에는 이번 달 누적 금액을 주기적으로 갱신
+  useEffect(() => {
+    if (!isWorking || !userId) return;
+    const interval = setInterval(() => {
+      fetchMonthlySummary(userId);
+      if (currentStoreId) fetchEstimatedSalary(currentStoreId, userId);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [isWorking, userId, currentStoreId]);
+
+  useEffect(() => {
+    return () => {
+      if (salaryRefreshTimeoutRef.current) {
+        clearTimeout(salaryRefreshTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const displayHourlyWage =
+    monthlySummary?.hourlyWage ?? contractHourlyWage ?? null;
+  const inferredHourlyWage =
+    estimatedSalary?.amount != null &&
+    estimatedSalary?.totalHours != null &&
+    estimatedSalary.totalHours > 0
+      ? estimatedSalary.amount / estimatedSalary.totalHours
+      : null;
+  const effectiveHourlyWage =
+    displayHourlyWage ??
+    (inferredHourlyWage != null && Number.isFinite(inferredHourlyWage)
+      ? inferredHourlyWage
+      : null);
+  const appliedHourlyWage = Math.max(
+    MIN_HOURLY_WAGE,
+    effectiveHourlyWage ?? MIN_HOURLY_WAGE,
+  );
+  const estimatedHasValue =
+    (estimatedSalary?.totalHours ?? 0) > 0 ||
+    (estimatedSalary?.amount ?? 0) > 0;
+  const displayTotalHours = estimatedHasValue
+    ? estimatedSalary?.totalHours ?? null
+    : monthlySummary?.totalHours ?? null;
+  const displayAmount = estimatedHasValue
+    ? estimatedSalary?.amount ?? null
+    : monthlySummary?.amount ??
+      (displayHourlyWage != null && displayTotalHours != null
+        ? Math.floor(displayTotalHours * displayHourlyWage)
+        : null);
+  const nowTimestamp = Date.now();
+  const elapsedMinutes =
+    localSessionStart != null
+      ? Math.floor((nowTimestamp - localSessionStart) / 60000)
+      : 0;
+  const elapsedHours = elapsedMinutes / 60;
+  const perMinuteWage = Number.isFinite(appliedHourlyWage)
+    ? appliedHourlyWage / 60
+    : null;
+  const optimisticBaseHours =
+    localSessionBaseHours ?? displayTotalHours ?? 0;
+  const optimisticWorkingHours =
+    isWorking && localSessionStart != null
+      ? optimisticBaseHours + elapsedHours
+      : null;
+  const optimisticWorkingAmount =
+    isWorking &&
+    localSessionStart != null &&
+    perMinuteWage != null
+      ? Math.floor(
+          (localSessionBaseAmount ?? 0) + elapsedMinutes * perMinuteWage,
+        )
+      : null;
+  const finalDisplayHours =
+    optimisticWorkingHours ??
+    (localPendingHours != null
+      ? Math.max(localPendingHours, displayTotalHours ?? 0)
+      : displayTotalHours);
+  const fallbackAmountFromHours =
+    finalDisplayHours != null &&
+    Number.isFinite(appliedHourlyWage)
+      ? Math.floor(finalDisplayHours * appliedHourlyWage)
+      : null;
+  const finalDisplayAmount =
+    optimisticWorkingAmount ??
+    (localPendingAmount != null
+      ? Math.max(localPendingAmount, displayAmount ?? 0)
+      : displayAmount ?? fallbackAmountFromHours);
+
+  useEffect(() => {
+    saveLocalAccum(localPendingHours, localPendingAmount);
+  }, [localPendingHours, localPendingAmount]);
+
+  useEffect(() => {
+    if (
+      localPendingHours != null &&
+      displayTotalHours != null &&
+      displayTotalHours >= localPendingHours - 0.01
+    ) {
+      setLocalPendingHours(null);
+    }
+    if (
+      localPendingAmount != null &&
+      displayAmount != null &&
+      displayAmount >= localPendingAmount
+    ) {
+      setLocalPendingAmount(null);
+    }
+  }, [displayTotalHours, displayAmount, localPendingHours, localPendingAmount]);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (contractHourlyWage == null) return;
+    fetchMonthlySummary(userId);
+  }, [contractHourlyWage, userId]);
 
   const handleAttendance = async () => {
     if (attendanceRequestRef.current) return;
@@ -629,23 +1081,35 @@ export default function DashboardScreen() {
           setAttendanceId(idNum);
           setIsWorking(true);
           await AsyncStorage.setItem("attendanceId", String(idNum));
+          const baseHours = Math.max(displayTotalHours ?? 0, localPendingHours ?? 0);
+          const baseAmount = Math.max(displayAmount ?? 0, localPendingAmount ?? 0);
+          setLocalSessionStart(Date.now());
+          setLocalSessionBaseHours(baseHours);
+          setLocalSessionBaseAmount(baseAmount);
+          setLocalPendingHours(baseHours);
+          setLocalPendingAmount(baseAmount);
           Alert.alert("출근 완료", "오늘도 즐거운 근무 되세요!");
         } else {
           Alert.alert("알림", "출근은 처리됐지만 attendanceId를 받지 못했습니다.");
         }
+        if (userId) {
+          if (currentStoreId) {
+            refreshSalaryViews(currentStoreId, userId);
+          } else {
+            fetchMonthlySummary(userId);
+          }
+        }
       } else {
         // 퇴근: ✅ attendanceId를 로컬 변수로 확정해서 보냄 (state 지연/null 방지)
-        let aid: number | null = attendanceId ?? null;
+        let aid: number | null = toValidAttendanceId(attendanceId);
         if (!aid) {
           const storedAttendanceId = await AsyncStorage.getItem("attendanceId");
-          aid = storedAttendanceId ? Number(storedAttendanceId) : null;
+          aid = toValidAttendanceId(storedAttendanceId);
         }
 
         if (!aid) {
           // 서버로 best-effort 동기화 시도
-          await syncWorkingFromServerByMonthly(userId);
-          const storedAttendanceId = await AsyncStorage.getItem("attendanceId");
-          aid = storedAttendanceId ? Number(storedAttendanceId) : null;
+          aid = await syncWorkingFromServerByMonthly(userId);
         }
 
         if (!aid) {
@@ -662,14 +1126,43 @@ export default function DashboardScreen() {
 
         await api.post("/api/v1/attendances/clock-out", {
           attendanceId: aid,
+          attendance_id: aid,
+          userId,
+          storeId: currentStoreId,
           lat: loc.coords.latitude,
           lon: loc.coords.longitude,
         });
+
+        if (localSessionStart != null && localSessionBaseHours != null) {
+          const workedMinutes = Math.floor(
+            (Date.now() - localSessionStart) / 60000,
+          );
+          const workedHours = localSessionBaseHours + workedMinutes / 60;
+          setLocalPendingHours(workedHours);
+          if (Number.isFinite(appliedHourlyWage)) {
+            const perMinute = appliedHourlyWage / 60;
+            setLocalPendingAmount(
+              Math.floor((localSessionBaseAmount ?? 0) + workedMinutes * perMinute),
+            );
+          } else if (localSessionBaseAmount != null) {
+            setLocalPendingAmount(localSessionBaseAmount);
+          }
+        }
+        setLocalSessionStart(null);
+        setLocalSessionBaseHours(null);
+        setLocalSessionBaseAmount(null);
 
         setIsWorking(false);
         setAttendanceId(null);
         await AsyncStorage.removeItem("attendanceId");
         Alert.alert("퇴근 완료", "오늘도 고생 많으셨습니다!");
+        if (userId) {
+          if (currentStoreId) {
+            refreshSalaryViews(currentStoreId, userId);
+          } else {
+            fetchMonthlySummary(userId);
+          }
+        }
       }
     } catch (error: any) {
       const serverMessage = error?.response?.data?.message || "";
@@ -763,47 +1256,28 @@ export default function DashboardScreen() {
           <>
             <View style={styles.greetingContainer}>
               <Text style={styles.greetingText}>
-                반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!
+                반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
               </Text>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>이번 달 받을 월급은? 💰</Text>
+              <Text style={styles.sectionTitle}>이번 달 받을 월급은?</Text>
               <Text style={styles.salaryPeriod}>
-                {salaryEstimate?.period || "-"}
+                {estimatedHasValue
+                  ? estimatedSalary?.period || monthlySummary?.period || "-"
+                  : monthlySummary?.period || estimatedSalary?.period || "-"}
               </Text>
               <Text style={styles.salaryAmountLarge}>
-                {salaryEstimate
-                  ? salaryEstimate.amount.toLocaleString()
+                {finalDisplayAmount != null
+                  ? `${finalDisplayAmount.toLocaleString()}원`
                   : "-"}
               </Text>
-              {salaryEstimate?.diff !== null && salaryEstimate ? (
-                <View style={styles.salaryDiffRow}>
-                  <Text style={styles.salaryDiffLabel}>전월 대비</Text>
-                  <Text
-                    style={[
-                      styles.salaryDiffText,
-                      salaryEstimate.diff >= 0
-                        ? styles.salaryDiffUp
-                        : styles.salaryDiffDown,
-                    ]}
-                  >
-                    {salaryEstimate.diff >= 0
-                      ? `+${salaryEstimate.diff.toLocaleString()}`
-                      : salaryEstimate.diff.toLocaleString()}
-                  </Text>
-                  <Text style={styles.salaryDiffLabel}>
-                    {salaryEstimate.diff >= 0 ? "증가했습니다." : "감소했습니다."}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.salaryDiffRow}>
-                  <Text style={styles.salaryDiffLabel}>
-                    전월 기록이 없습니다.
-                  </Text>
-                </View>
-              )}
+              <Text style={styles.salaryMetaText}>
+                근무 시간: {formatWorkHours(finalDisplayHours)}
+              </Text>
+
             </View>
+            
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>오늘도 화이팅! 💰</Text>

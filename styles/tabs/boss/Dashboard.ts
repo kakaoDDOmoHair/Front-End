@@ -171,6 +171,53 @@ export const styles = StyleSheet.create({
     // paddingRight는 ScrollView에서 설정하는 것이 좋음
   },
 
+  // 월별 급여 목록
+  salaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  salaryLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  salaryName: {
+    fontSize: 16,
+    color: "#000",
+    fontWeight: "600",
+  },
+  salaryAmount: {
+    fontSize: 16,
+    color: "#000",
+    fontWeight: "600",
+  },
+  salaryStatusBadge: {
+    backgroundColor: "#F0F0F0",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  salaryStatusPending: {
+    backgroundColor: "#FFE5E5",
+  },
+  salaryStatusText: {
+    fontSize: 12,
+    color: "#444",
+    fontWeight: "600",
+  },
+  emptySalaryContainer: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  emptySalaryText: {
+    fontSize: 14,
+    color: "#AFAFAF",
+  },
+
   // To Do List
   todoItem: {
     flexDirection: "row",
