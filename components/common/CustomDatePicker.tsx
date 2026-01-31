@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  Dimensions,
-  Modal,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    Modal,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 const screenWidth = Dimensions.get("window").width;
@@ -51,8 +51,10 @@ export const CustomDatePicker = ({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, styles.modalOverlayTop]}>
         <View style={styles.modalContent}>
           {/* 헤더 부분 */}
           <View style={styles.calendarHeader}>
@@ -139,6 +141,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  modalOverlayTop: {
+    zIndex: 99999,
+    elevation: 99999,
   },
   modalContent: {
     backgroundColor: "white",

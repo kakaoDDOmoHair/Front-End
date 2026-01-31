@@ -10,15 +10,15 @@ export const styles = StyleSheet.create({
   },
   scrollContainer: {
     paddingBottom: 100,
+    flexGrow: 1,
   },
 
-  // --- [1] 타이틀 및 상단 헤더 영역 ---
+  // --- [1] 타이틀 및 상단 헤더 영역 (스크롤 영역 내) ---
   titleSection: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     padding: 20,
-    zIndex: 999,
     backgroundColor: "#FFF",
   },
   mainTitle: {
@@ -31,10 +31,63 @@ export const styles = StyleSheet.create({
     gap: 5,
     alignItems: "center",
   },
+  iconTouchArea: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   iconButton: {
     padding: 8,
     justifyContent: "center",
     alignItems: "center",
+  },
+  requestMenuBackdrop: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 998,
+  },
+  requestMenuBox: {
+    position: "absolute",
+    top: 56,
+    right: 0,
+    flexDirection: "row",
+    backgroundColor: "#F2F2F2",
+    borderRadius: 14,
+    padding: 4,
+    gap: 6,
+    minWidth: 140,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  requestMenuItem: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestMenuItemLeft: {
+    backgroundColor: "#FFF",
+  },
+  requestMenuItemRight: {
+    backgroundColor: "#E8E0F5",
+  },
+  requestMenuText: {
+    fontSize: 15,
+    color: "#333",
+    fontWeight: "600",
+  },
+  requestMenuTextPurple: {
+    color: "#5E3DD1",
   },
 
   // --- [2] 근무 기록 리스트 섹션 (기록 카드) ---
@@ -99,6 +152,18 @@ export const styles = StyleSheet.create({
     justifyContent: "flex-start",
     paddingTop: 8,
   },
+  dayNumberWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  todayCircle: {
+    backgroundColor: "#E8E0F5",
+    borderWidth: 2,
+    borderColor: "#E0D5F0", // 연보라색 테두리 통일
+  },
   selectedDay: {
     backgroundColor: "#F0EBFF",
     borderRadius: 15,
@@ -106,6 +171,7 @@ export const styles = StyleSheet.create({
     borderColor: "#D1C4E9",
   },
   dayText: { fontSize: 15, color: "#444" },
+  selectedDayText: { color: "#333", fontWeight: "bold" },
   badge: {
     borderRadius: 6,
     paddingHorizontal: 5,
@@ -274,6 +340,33 @@ export const styles = StyleSheet.create({
     backgroundColor: "#F7F7F7",
   },
   menuText: { fontSize: 14, fontWeight: "bold", color: "#333" },
+
+  // 요청하기 모달 — 수정/삭제, 등록된/기록된 세그먼트
+  segmentRow: {
+    flexDirection: "row",
+    borderRadius: 14,
+    padding: 4,
+    gap: 8,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#f3f3f3",
+    alignItems: "center",
+    borderWidth: 0,
+  },
+  segmentBtnActive: {
+    backgroundColor: "#E0D5FF",
+  },
+  segmentText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
+  },
+  segmentTextActive: {
+    color: "#5E3DD1",
+  },
 
   // 카테고리 선택 버튼 (등록된/기록된)
   categoryGroup: {

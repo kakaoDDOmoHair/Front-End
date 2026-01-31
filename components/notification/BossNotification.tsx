@@ -5,16 +5,15 @@ import { BossNotificationItemData } from './BossData';
 interface BossNotificationItemProps {
   data: BossNotificationItemData;
   onPress: () => void;
-  // id가 number이므로 타입을 number로 수정합니다.
-  onApprove?: (id: number) => void; 
+  onApprove?: (id: number) => void;
   onReject?: (id: number) => void;
 }
 
-export const BossNotificationItem: React.FC<BossNotificationItemProps> = ({ 
-  data, 
-  onPress, 
-  onApprove, 
-  onReject 
+export const BossNotificationItem: React.FC<BossNotificationItemProps> = ({
+  data,
+  onPress,
+  onApprove,
+  onReject,
 }) => {
   
   return (
@@ -38,14 +37,13 @@ export const BossNotificationItem: React.FC<BossNotificationItemProps> = ({
         {/* hasActions가 true일 때만 승인/거절 버튼 표시 */}
         {data.hasActions && (
           <View style={itemStyles.buttonRow}>
-            <TouchableOpacity 
-              style={itemStyles.actionButton} 
+            <TouchableOpacity
+              style={itemStyles.actionButton}
               onPress={() => onReject?.(data.id)}
             >
               <Text style={[itemStyles.actionButtonText, { color: '#FF383C' }]}>거절</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+            <TouchableOpacity
               style={itemStyles.actionButton}
               onPress={() => onApprove?.(data.id)}
             >
