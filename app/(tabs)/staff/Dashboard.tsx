@@ -1266,33 +1266,64 @@ export default function DashboardScreen() {
   const deleteTodo = (id: number) =>
     setTodoList(todoList.filter((t) => t.id !== id));
 
+  if (!currentStoreId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <Header notificationCount={notificationCount} />
+        <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
+          <Text style={{ fontSize: 25, fontWeight: "bold" }}>
+            반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text> 님!👋
+          </Text>
+        </View>
+
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyContent}>
+            <Ionicons name="storefront-outline" size={80} color="#C4C4C4" />
+            <Text style={styles.emptyTitle}>소속된 매장이 없습니다</Text>
+            <Text style={styles.emptyDesc}>
+              매장에 합류하여 실시간 출퇴근 기록과{"\n"}근무 일정을 확인해보세요!
+            </Text>
+            <TouchableOpacity
+              style={styles.registerButton}
+              onPress={() => router.push("/(tabs)/staff/Registration")}
+            >
+              <Text style={styles.registerButtonText}>매장 찾으러 가기</Text>
+              <Ionicons name="search" size={20} color="#9747FF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View
+          style={{
+            height: 85,
+            backgroundColor: "#F9F9F9",
+            borderTopWidth: 1,
+            borderTopColor: "#EEE",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#CCC", fontSize: 12 }}>
+            매장 연결 후 메뉴 이용이 가능합니다
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
         <Header notificationCount={notificationCount} />
 
-        {!currentStoreId ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyContent}>
-              <Ionicons name="storefront-outline" size={80} color="#C4C4C4" />
-              <Text style={styles.emptyTitle}>소속된 매장이 없습니다</Text>
-              <Text style={styles.emptyDesc}>
-                매장에 합류하여 실시간 출퇴근 기록과 근무 일정을 확인해보세요!
-              </Text>
-              <TouchableOpacity style={styles.registerButton} onPress={() => router.push("/(tabs)/staff/Registration")}>
-                <Text style={styles.registerButtonText}>매장 찾으러 가기</Text>
-                <Ionicons name="search" size={20} color="#9747FF" />
-              </TouchableOpacity>
-            </View>
+        <>
+          <View style={styles.greetingContainer}>
+            <Text style={styles.greetingText}>
+              반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
+            </Text>
           </View>
-        ) : (
-          <>
-            <View style={styles.greetingContainer}>
-              <Text style={styles.greetingText}>
-                반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
-              </Text>
-            </View>
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>이번 달 받을 월급은?</Text>
@@ -1415,40 +1446,24 @@ export default function DashboardScreen() {
             </View>
 
         
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>근무 시간표</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScroll}
-              >
-                {weeklySchedules.map((day, idx) => (
-                  <View key={`${day.day}-${idx}`} style={{ marginRight: 12 }}>
-                    <ScheduleCard data={day} />
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          </>
-        )}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>근무 시간표</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalScroll}
+            >
+              {weeklySchedules.map((day, idx) => (
+                <View key={`${day.day}-${idx}`} style={{ marginRight: 12 }}>
+                  <ScheduleCard data={day} />
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </>
       </ScrollView>
 
-      {currentStoreId ? (
-        <Footer />
-      ) : (
-        <View
-          style={{
-            height: 85,
-            backgroundColor: "#F9F9F9",
-            borderTopWidth: 1,
-            borderTopColor: "#EEE",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#CCC", fontSize: 12 }}>매장 연결 후 메뉴 이용이 가능합니다</Text>
-        </View>
-      )}
+      <Footer />
     </SafeAreaView>
   );
 }
