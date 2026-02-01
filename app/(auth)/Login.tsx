@@ -50,6 +50,14 @@ export default function LoginScreen() {
     }
 
     try {
+      // 0. 기존 세션 정보 초기화 (다른 계정으로 로그인 시 이전 데이터 제거)
+      await AsyncStorage.multiRemove([
+        "username",
+        "userId",
+        "storeId",
+        "userRole",
+      ]);
+
       // 1. 로그인 요청
       const response = await api.post("/api/v1/auth/login", {
         username: username,
@@ -82,6 +90,27 @@ export default function LoginScreen() {
         if (result.storeId)
           await AsyncStorage.setItem("storeId", String(result.storeId));
         if (result.role) await AsyncStorage.setItem("userRole", result.role);
+
+        // 3. 로그인 응답에 storeId가 없으면 users/me API로 조회
+        if (!result.storeId) {
+          try {
+            const userRes = await api.get("/api/v1/users/me", {
+              params: { username },
+            });
+            if (userRes.data?.storeId) {
+              await AsyncStorage.setItem(
+                "storeId",
+                String(userRes.data.storeId),
+              );
+              console.log(
+                "✅ users/me에서 storeId 복구:",
+                userRes.data.storeId,
+              );
+            }
+          } catch (e) {
+            console.error("users/me storeId 조회 실패:", e);
+          }
+        }
 
         showAlert(`${result.name || username}님 환영합니다!`);
 
