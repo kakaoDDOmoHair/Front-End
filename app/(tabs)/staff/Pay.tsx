@@ -2,19 +2,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  ScrollView,
-  SafeAreaView,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/staff/Pay";
 
 interface SalaryHistoryItem {
@@ -57,6 +58,7 @@ type SalaryRequestResponse = {
 };
 
 const WorkerPay: React.FC = () => {
+  const notificationCount = useNotificationCount("staff");
   const [history, setHistory] = useState<SalaryHistoryItem[]>([]);
   const [currentMonth, setCurrentMonth] = useState<CurrentMonthSalary | null>(
     null,
@@ -513,7 +515,7 @@ const WorkerPay: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       {!isRequestedToday ? (
-        <Header notificationCount={1} />
+        <Header notificationCount={notificationCount} />
       ) : (
         <View style={styles.topNavigation}>
           <TouchableOpacity onPress={() => setIsRequestedToday(false)}>

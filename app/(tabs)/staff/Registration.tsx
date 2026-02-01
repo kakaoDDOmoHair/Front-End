@@ -6,8 +6,8 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
-    ScrollView,
     SafeAreaView,
+    ScrollView,
     Text,
     TouchableOpacity,
     View,
@@ -18,11 +18,12 @@ import { FormSection } from "../../../components/common/FormSection";
 import Header from "../../../components/common/Header";
 import { SideButton } from "../../../components/common/SideButton";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/staff/Registration";
 
 export default function WorkerRegistrationScreen() {
   const router = useRouter();
-  const [notificationCount, setNotificationCount] = useState(5);
+  const notificationCount = useNotificationCount("staff");
 
   // 1. 입력 상태 관리
   const [inviteCode, setInviteCode] = useState("");

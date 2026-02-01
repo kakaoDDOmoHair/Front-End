@@ -9,7 +9,7 @@ const BASE_URL = "https://queenliest-profamily-jarrett.ngrok-free.dev";
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 5000,
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
     "ngrok-skip-browser-warning": "69420",

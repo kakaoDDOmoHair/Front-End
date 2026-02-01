@@ -1,16 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, SafeAreaView, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, SafeAreaView } from "react-native";
 
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import { ManualItem } from "../../../components/manual/StaffData";
 import { StaffManual } from "../../../components/manual/StaffManual";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 
 export default function ManualScreen() {
-  const [notificationCount] = useState(0);
+  const notificationCount = useNotificationCount("staff");
   const [selectedManual, setSelectedManual] = useState<ManualItem | null>(null);
   const [manualList, setManualList] = useState<ManualItem[]>([]);
   const [loading, setLoading] = useState(false);

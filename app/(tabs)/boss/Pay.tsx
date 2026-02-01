@@ -2,21 +2,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  AppState,
-  Linking,
-  Modal,
-  ScrollView,
-  SafeAreaView,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    AppState,
+    Linking,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/Pay";
 
 type SalaryStatus = "WAITING" | "REQUESTED" | "COMPLETED" | string;
@@ -41,6 +42,7 @@ interface EstimatedSalary {
 }
 
 const Pay: React.FC = () => {
+  const notificationCount = useNotificationCount("boss");
   // --- [상태 관리] ---
   const [workerList, setWorkerList] = useState<MonthlyWorker[]>([]);
   const [selectedWorker, setSelectedWorker] = useState<MonthlyWorker | null>(
@@ -410,7 +412,7 @@ const Pay: React.FC = () => {
   if (loading)
     return (
       <SafeAreaView style={styles.container}>
-        <Header notificationCount={3} />
+        <Header notificationCount={notificationCount} />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
           <ActivityIndicator size="large" color="#A28BFF" />
         </View>
@@ -420,7 +422,7 @@ const Pay: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header notificationCount={3} />
+      <Header notificationCount={notificationCount} />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}

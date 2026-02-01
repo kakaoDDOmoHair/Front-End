@@ -8,6 +8,8 @@ export interface NotificationItemData {
   time: string;
   category: '오늘' | '어제' | '이번 주';
   isRead: boolean;
+  /** 정렬용(최신 위) — ISO 문자열 또는 타임스탬프 */
+  sortAt?: string;
 }
 
 

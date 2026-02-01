@@ -1,9 +1,23 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import api from "../constants/api";
 import { fetchModifications } from "../services/modificationApi";
+
+async function getStoredToken(): Promise<string | null> {
+  try {
+    if (Platform.OS === "web") {
+      return typeof localStorage !== "undefined" ? localStorage.getItem("user_token") : null;
+    }
+    let token = await SecureStore.getItemAsync("user_token");
+    if (!token) token = await AsyncStorage.getItem("user_token");
+    return token;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 알림 API 연동 — 헤더 배지에 표시할 "온 알림 개수".
@@ -19,10 +33,7 @@ export function useNotificationCount(role: "staff" | "boss"): number {
         setCount(0);
         return;
       }
-      const token =
-        Platform.OS === "web"
-          ? (typeof localStorage !== "undefined" ? localStorage.getItem("user_token") : null)
-          : await AsyncStorage.getItem("user_token");
+      const token = await getStoredToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const meRes = await api.get("/api/v1/users/me", { params: { username }, headers }).catch(() => null);
       if (!meRes?.data) {
@@ -66,6 +77,11 @@ export function useNotificationCount(role: "staff" | "boss"): number {
       loadCount();
     }, [loadCount])
   );
+
+  useEffect(() => {
+    const interval = setInterval(loadCount, 30000);
+    return () => clearInterval(interval);
+  }, [loadCount]);
 
   return count;
 }

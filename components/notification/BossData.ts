@@ -7,6 +7,8 @@ export interface BossNotificationItemData {
   category: '오늘' | '어제' | '이번 주';
   isRead: boolean;
   hasActions?: boolean; // 승인/거절 버튼 표시 여부
+  /** 정렬용(최신 위) — ISO 문자열 */
+  sortAt?: string;
 }
 
 export const BOSS_NOTIFICATIONS: BossNotificationItemData[] = [
