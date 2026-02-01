@@ -1,18 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
-import { usePathname, useRouter } from "expo-router"; // ✅ usePathname 추가
+import { usePathname, useRouter } from "expo-router";
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
+import { useUnreadNotification } from "@/contexts/UnreadNotificationContext";
+import { useNotificationCount } from "@/hooks/useNotificationCount";
+
 interface HeaderProps {
-  notificationCount: number;
+  notificationCount?: number;
 }
 
-const Header: React.FC<HeaderProps> = ({ notificationCount }) => {
+const Header: React.FC<HeaderProps> = (props) => {
   const router = useRouter();
-  const pathname = usePathname(); // ✅ 현재 경로를 가져옵니다.
-
-  // ✅ 현재 경로가 staff인지 boss인지 판단 (경로에 포함된 키워드로 확인)
+  const pathname = usePathname();
   const userType = pathname.includes("/staff") ? "staff" : "boss";
+  const apiCount = useNotificationCount(userType);
+  const contextUnread = useUnreadNotification(userType);
+  const notificationCount = contextUnread !== null ? contextUnread : (props.notificationCount ?? apiCount);
 
   return (
     <View style={styles.header}>
@@ -30,19 +34,23 @@ const Header: React.FC<HeaderProps> = ({ notificationCount }) => {
 
       <TouchableOpacity
         activeOpacity={0.7}
-        // ✅ 하드코딩된 'boss' 대신 'userType' 변수를 사용합니다.
-        onPress={() => router.push(`/(tabs)/${userType}/Notification` as any)}
-        style={{ position: "relative" }}
+        onPress={() => {
+          const current = pathname || "";
+          const isNotification = current.includes("/Notification");
+          const returnTo = !isNotification && current ? encodeURIComponent(current) : "";
+          const href = returnTo
+            ? `/(tabs)/${userType}/Notification?returnTo=${returnTo}` as any
+            : `/(tabs)/${userType}/Notification` as any;
+          router.push(href);
+        }}
+        style={styles.bellWrap}
       >
         <Ionicons name="notifications" size={24} color="#E0D5FF" />
-
-        {notificationCount > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {notificationCount > 99 ? "99+" : notificationCount}
-            </Text>
-          </View>
-        )}
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {notificationCount > 99 ? "99+" : Number(notificationCount) || 0}
+          </Text>
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -60,6 +68,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     zIndex: 1000,
   },
+  bellWrap: {
+    position: "relative",
+    overflow: "visible",
+  },
   badge: {
     position: "absolute",
     top: -4,
@@ -71,6 +83,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 4,
+    zIndex: 10,
   },
   badgeText: {
     color: "#fff",

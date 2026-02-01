@@ -71,13 +71,22 @@ export async function fetchModifications(params: {
   status?: ModificationStatus;
   requesterId?: number;
 }, headers?: Record<string, string>) {
-  const res = await api.get<ModificationRequestItem[] | { list?: ModificationRequestItem[]; data?: ModificationRequestItem[] }>(
+  const res = await api.get(
     "/api/v1/modifications",
     { params, ...(mergeHeaders(headers) ? { headers: mergeHeaders(headers) } : {}) }
   );
-  const data = res.data;
+  const data = res.data as any;
   if (Array.isArray(data)) return data;
-  const list = (data as any)?.list ?? (data as any)?.data;
+  const inner = data?.data;
+  const list =
+    data?.list ??
+    (Array.isArray(inner) ? inner : undefined) ??
+    inner?.list ??
+    inner?.data ??
+    data?.content ??
+    data?.modifications ??
+    data?.items ??
+    [];
   return Array.isArray(list) ? list : [];
 }
 

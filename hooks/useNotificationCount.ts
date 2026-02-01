@@ -1,10 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import api from "../constants/api";
-import { fetchModifications } from "../services/modificationApi";
+import { UnreadNotificationContext } from "../contexts/UnreadNotificationContext";
 
 async function getStoredToken(): Promise<string | null> {
   try {
@@ -20,57 +20,40 @@ async function getStoredToken(): Promise<string | null> {
 }
 
 /**
- * 알림 API 연동 — 헤더 배지에 표시할 "온 알림 개수".
- * staff: 정정 승인(APPROVED) 건수, boss: 대기 중 수정/삭제 요청(PENDING) 건수.
+ * 홈 화면 종 모양 아이콘 위 배지용 — GET /api/v1/notifications/unread-count 사용.
+ * - Authorization: Bearer {token} 만 전달 (백엔드에서 토큰으로 로그인 유저 식별 후 count 반환).
+ * - 응답: { "status": "success", "data": { "count": <해당 유저의 미읽음 개수> } }
+ * - 스케줄 등록 시 해당 알바생에게 알림 1건(isRead=false) 생성 → data.count 1 증가.
  */
-export function useNotificationCount(role: "staff" | "boss"): number {
+export function useNotificationCount(_role: "staff" | "boss"): number {
   const [count, setCount] = useState(0);
+  const refetchTrigger = useContext(UnreadNotificationContext)?.refetchTrigger ?? 0;
 
   const loadCount = useCallback(async () => {
     try {
-      const username = await AsyncStorage.getItem("username");
-      if (!username) {
-        setCount(0);
-        return;
-      }
       const token = await getStoredToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const meRes = await api.get("/api/v1/users/me", { params: { username }, headers }).catch(() => null);
-      if (!meRes?.data) {
+      if (!token) {
         setCount(0);
         return;
       }
-      const me = meRes.data?.data ?? meRes.data;
-      const storeId = me?.storeId ?? null;
-      const userId = me?.userId ?? me?.id ?? null;
-      if (storeId == null) {
-        setCount(0);
-        return;
-      }
-      const id = Number(storeId);
-      if (role === "boss") {
-        const list = await fetchModifications({ storeId: id, status: "PENDING" }, headers).catch(() => []);
-        setCount(Array.isArray(list) ? list.length : 0);
-      } else {
-        const uid = userId != null ? Number(userId) : null;
-        if (uid == null) {
-          setCount(0);
-          return;
-        }
-        const list = await fetchModifications(
-          { storeId: id, requesterId: uid, status: "APPROVED" },
-          headers
-        ).catch(() => []);
-        setCount(Array.isArray(list) ? list.length : 0);
-      }
-    } catch {
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      const res = await api.get<{ status?: string; data?: { count?: number } }>(
+        "/api/v1/notifications/unread-count",
+        { headers }
+      ).catch(() => null);
+      const raw = res?.data;
+      const n = raw?.data?.count ?? raw?.count ?? 0;
+      setCount(Number(n) || 0);
+      if (__DEV__) console.log("[useNotificationCount] unread-count:", Number(n) || 0);
+    } catch (e) {
+      if (__DEV__) console.warn("[useNotificationCount] loadCount 실패", e);
       setCount(0);
     }
-  }, [role]);
+  }, []);
 
   useEffect(() => {
     loadCount();
-  }, [loadCount]);
+  }, [loadCount, refetchTrigger]);
 
   useFocusEffect(
     useCallback(() => {
@@ -79,7 +62,7 @@ export function useNotificationCount(role: "staff" | "boss"): number {
   );
 
   useEffect(() => {
-    const interval = setInterval(loadCount, 30000);
+    const interval = setInterval(loadCount, 15000);
     return () => clearInterval(interval);
   }, [loadCount]);
 

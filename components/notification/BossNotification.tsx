@@ -23,32 +23,40 @@ export const BossNotificationItem: React.FC<BossNotificationItemProps> = ({
         activeOpacity={0.8}
         onPress={onPress}
       >
-        <View style={itemStyles.mainRow}>
-          <View style={itemStyles.contentContainer}>
+        <View style={itemStyles.topRow}>
+          <View style={itemStyles.titleRow}>
             <Text style={itemStyles.iconText}>{data.icon}</Text>
             <Text style={itemStyles.categoryTag}>{data.name}</Text>
-            <Text style={itemStyles.messageText} numberOfLines={2}>
-              {data.message}
-            </Text>
           </View>
           <Text style={itemStyles.timeText}>{data.time}</Text>
         </View>
+        <Text style={itemStyles.messageText}>
+          {data.message}
+        </Text>
 
-        {/* hasActions가 true일 때만 승인/거절 버튼 표시 */}
-        {data.hasActions && (
+        {/* 수락/거절 후: "수락됨" 또는 "거절됨" 표시, 대기 중일 때만 승인/거절 버튼 */}
+        {(data.hasActions || data.requestStatus) && (
           <View style={itemStyles.buttonRow}>
-            <TouchableOpacity
-              style={itemStyles.actionButton}
-              onPress={() => onReject?.(data.id)}
-            >
-              <Text style={[itemStyles.actionButtonText, { color: '#FF383C' }]}>거절</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={itemStyles.actionButton}
-              onPress={() => onApprove?.(data.id)}
-            >
-              <Text style={[itemStyles.actionButtonText, { color: '#0088FF' }]}>승인</Text>
-            </TouchableOpacity>
+            {data.requestStatus === 'APPROVED' ? (
+              <Text style={itemStyles.statusText}>수락됨</Text>
+            ) : data.requestStatus === 'REJECTED' ? (
+              <Text style={[itemStyles.statusText, { color: '#666' }]}>거절됨</Text>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={itemStyles.actionButton}
+                  onPress={() => onReject?.(data.id)}
+                >
+                  <Text style={[itemStyles.actionButtonText, { color: '#FF383C' }]}>거절</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={itemStyles.actionButton}
+                  onPress={() => onApprove?.(data.id)}
+                >
+                  <Text style={[itemStyles.actionButtonText, { color: '#0088FF' }]}>승인</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
         {!data.isRead && <View style={itemStyles.unreadBadge} />}
@@ -76,20 +84,21 @@ const itemStyles = StyleSheet.create({
     // 그림자 효과 추가 (Android)
     elevation: 2,
   },
-  mainRow: {
+  topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  contentContainer: {
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     paddingRight: 8,
   },
-  iconText: { 
-    fontSize: 18, 
-    marginRight: 6, 
+  iconText: {
+    fontSize: 18,
+    marginRight: 6,
   },
   categoryTag: {
     fontSize: 18,
@@ -101,15 +110,38 @@ const itemStyles = StyleSheet.create({
     fontSize: 15,
     color: '#000000',
     fontWeight: '500',
-    flex: 1,
     lineHeight: 22,
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  comparisonBox: {
+    flex: 1,
+    minWidth: 120,
+    backgroundColor: '#EEEEEE',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  comparisonLabel: {
+    fontSize: 12,
+    color: '#666666',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  comparisonValue: {
+    fontSize: 15,
+    color: '#000000',
+    fontWeight: '500',
   },
   timeText: {
     fontSize: 12,
     color: '#0000004D',
     minWidth: 45,
     textAlign: 'right',
-    marginTop: 10,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -128,6 +160,11 @@ const itemStyles = StyleSheet.create({
   actionButtonText: {
     fontSize: 15,
     fontWeight: '400',
+  },
+  statusText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0088FF',
   },
   unreadBadge: {
     position: 'absolute',

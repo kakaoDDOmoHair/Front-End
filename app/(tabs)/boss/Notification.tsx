@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,63 +16,17 @@ import {
 import type { BossNotificationItemData } from "../../../components/notification/BossData";
 import { BossNotificationItem } from "../../../components/notification/BossNotification";
 import api from "../../../constants/api";
+import { useSetUnreadNotification, useTriggerNotificationRefetch } from "../../../contexts/UnreadNotificationContext";
 import {
   fetchModifications,
   updateModificationStatus,
   type ModificationRequestItem,
 } from "../../../services/modificationApi";
+import { markAllNotificationsRead } from "../../../services/notificationApi";
 import { styles } from "../../../styles/tabs/boss/Notification";
+import { formatRelativeTime, getCategory, parseDateForRelative } from "../../../utils/relativeTime";
 
-const BOSS_READ_IDS_KEY = "boss_read_notification_ids";
-
-/**
- * 백엔드가 UTC로 보내는데 'Z' 없이 오면(예: 2025-01-31T01:29:00) JS가 로컬로 해석해 9시간 전으로 나옴.
- * ISO 형식이면서 타임존 없으면 UTC로 해석하도록 보정.
- */
-function parseDateForRelative(timeStr?: string): Date | null {
-  if (!timeStr || typeof timeStr !== "string") return null;
-  const s = timeStr.trim();
-  // ISO 형식(날짜+T+시간)인데 끝에 Z 또는 +09:00 없으면 → UTC로 간주하고 Z 붙임
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !/[Zz]$/.test(s) && !/[+-]\d{2}:?\d{2}$/.test(s)) {
-    const noMs = s.replace(/\.\d{3}$/, "");
-    const withZ = `${noMs}Z`;
-    const d = new Date(withZ);
-    return Number.isNaN(d.getTime()) ? new Date(timeStr) : d;
-  }
-  const d = new Date(timeStr);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/** createdAt → "2시간 전" 스타일 */
-function formatRelativeTime(createdAt?: string): string {
-  const date = parseDateForRelative(createdAt);
-  if (!date) return createdAt ? "오늘" : "";
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffM = Math.floor(diffMs / 60000);
-  const diffH = Math.floor(diffMs / 3600000);
-  const diffD = Math.floor(diffMs / 86400000);
-  if (diffMs < 0) return "방금 전";
-  if (diffM < 1) return "1분 전";
-  if (diffM < 60) return `${diffM}분 전`;
-  if (diffH < 24) return `${diffH}시간 전`;
-  if (diffD === 1) return "하루 전";
-  if (diffD < 7) return `${diffD}일 전`;
-  return "이번 주";
-}
-
-/** 날짜 기준 오늘/어제/이번 주 */
-function getCategory(createdAt?: string): "오늘" | "어제" | "이번 주" {
-  const date = parseDateForRelative(createdAt);
-  if (!date) return "이번 주";
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const then = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const diffD = Math.floor((today.getTime() - then.getTime()) / 86400000);
-  if (diffD === 0) return "오늘";
-  if (diffD === 1) return "어제";
-  return "이번 주";
-}
+const BOSS_READ_KEYS_KEY = "boss_read_notification_keys";
 
 /** 출퇴근 시간 표시: ISO(UTC)면 로컬 HH:mm으로, "HH:mm" 형태면 그대로 */
 function formatTimeForDisplay(timeStr?: string): string {
@@ -89,15 +43,48 @@ function formatTimeForDisplay(timeStr?: string): string {
   return s.slice(0, 5);
 }
 
-/** 정정 요청 API 항목 → BossNotificationItemData (수정/삭제 구분) */
-function mapToModificationItem(item: ModificationRequestItem): BossNotificationItemData {
+/** 정정 요청 API 항목 → BossNotificationItemData (수정/삭제 구분). beforeValue는 API 또는 scheduleMap에서 채움 */
+function mapToModificationItem(
+  item: ModificationRequestItem,
+  scheduleTimeByTargetId?: Map<number, string>
+): BossNotificationItemData {
   const name = item.requesterName || "알바생";
   const isDelete = item.requestType === "DELETE";
-  const actionText = isDelete ? "삭제 요청이 들어왔습니다" : "수정 요청이 들어왔습니다";
   const typeLabel = item.targetType === "ATTENDANCE" ? "근무 시간" : "스케줄";
-  const value = item.afterValue && !isDelete ? ` (${item.afterValue})` : "";
-  const reason = item.reason ? ` 사유: ${item.reason}` : "";
-  const message = `${name}님이 ${actionText}. ${item.targetDate} ${typeLabel}${value}${reason}`;
+  const afterValue = (item.afterValue ?? (item as any).after_value ?? "").trim();
+  let beforeValue = (
+    (item as any).beforeValue ??
+    (item as any).before_value ??
+    (item as any).originalValue ??
+    (item as any).original_value ??
+    (item as any).previousValue ??
+    (item as any).previous_value ??
+    (item as any).beforeTime ??
+    (item as any).before_time ??
+    (typeof (item as any).schedule === "object" && (item as any).schedule != null
+      ? ((item as any).schedule?.time ?? ((item as any).schedule?.startTime != null && (item as any).schedule?.endTime != null ? `${(item as any).schedule.startTime}~${(item as any).schedule.endTime}` : ""))
+      : "") ??
+    (typeof (item as any).target === "object" && (item as any).target != null
+      ? ((item as any).target?.time ?? ((item as any).target?.startTime != null && (item as any).target?.endTime != null ? `${(item as any).target.startTime}~${(item as any).target.endTime}` : ""))
+      : "") ??
+    ""
+  ).trim();
+  if (!beforeValue && scheduleTimeByTargetId != null) {
+    const tid = item.targetId ?? (item as any).target_id ?? (item as any).scheduleId ?? (item as any).schedule_id;
+    if (tid != null) beforeValue = (scheduleTimeByTargetId.get(Number(tid)) ?? "").trim();
+  }
+  const reason = (item.reason ?? (item as any).reason ?? "").trim();
+  const targetDate = item.targetDate ?? (item as any).target_date ?? "";
+  const before = beforeValue || "-";
+  const reqRecord = isDelete ? "기록 삭제" : (afterValue || "-");
+  const dateLine = targetDate ? `근무 날짜: ${targetDate}` : "";
+  const lines = [
+    isDelete ? `${name}님 삭제 요청이 들어왔습니다.` : `${name}님 수정 요청이 들어왔습니다.`,
+    ...(dateLine ? [dateLine] : []),
+    `${before} → ${reqRecord}`,
+    `사유: ${reason || "-"}`,
+  ];
+  const message = lines.join("\n");
   // 수락/거절한 시각(updatedAt)이 있으면 그걸로 표시 → 방금 처리한 건 '방금 전'으로 보이게
   const timeSource = (item.status === "APPROVED" || item.status === "REJECTED") && item.updatedAt
     ? item.updatedAt
@@ -108,27 +95,34 @@ function mapToModificationItem(item: ModificationRequestItem): BossNotificationI
     icon: "⏰",
     name: isDelete ? "삭제 요청" : "수정 요청",
     message,
-    time: formatRelativeTime(timeSource),
-    category: getCategory(timeSource),
+    time: formatRelativeTime(timeSource ?? sortAt),
+    category: getCategory(timeSource ?? sortAt),
     isRead: false,
     hasActions: true,
     sortAt,
+    readKey: `mod-${item.requestId}`,
+    beforeValue: beforeValue || undefined,
+    afterValue: afterValue || undefined,
+    targetDate: targetDate || undefined,
+    typeLabel: typeLabel || undefined,
   };
 }
 
 /** 급여 정산 요청(REQUESTED) → BossNotificationItemData (id는 1000000+userId로 정정 요청과 구분) */
-function mapSalaryRequestToItem(worker: { userId: number; name?: string }): BossNotificationItemData {
+function mapSalaryRequestToItem(worker: { userId: number; name?: string; requestedAt?: string }): BossNotificationItemData {
   const workerName = worker.name || "알바생";
+  const sortAt = (worker as any).requestedAt ?? (worker as any).createdAt ?? new Date().toISOString();
   return {
     id: 1000000 + worker.userId,
     icon: "💰",
     name: "정산",
     message: `${workerName}님이 급여 정산을 요청했습니다. 급여 페이지에서 확인하세요.`,
-    time: "오늘",
-    category: "오늘",
+    time: formatRelativeTime(sortAt),
+    category: getCategory(sortAt),
     isRead: false,
     hasActions: false,
-    sortAt: new Date().toISOString(),
+    sortAt,
+    readKey: `salary-req-${worker.userId}-${sortAt}`,
   };
 }
 
@@ -144,6 +138,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
     const totalHours = (a.totalHours ?? a.total_hours) as number | undefined;
     const hasClockedIn = status === "ON" || status === "LATE";
     const hasClockedOut = status === "OFF" || status === "ABSENT" || !!endTime;
+    const uid = Number(a.userId);
     if (startTime) {
       const timePart = formatTimeForDisplay(startTime);
       const isLate = status === "LATE";
@@ -152,54 +147,60 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         icon: isLate ? "⚠️" : "⏰",
         name: isLate ? "지각" : "출근",
         message: isLate
-          ? `${name}님이 예정된 시간보다 늦게 출근했습니다. (${timePart})`
-          : `${name}님이 출근했습니다. (${timePart})`,
+          ? `${name}님이 (${timePart}) 지각 출근했습니다.`
+          : `${name}님이 (${timePart}) 출근했습니다.`,
         time: formatRelativeTime(startTime),
         category: getCategory(startTime),
         isRead: false,
         hasActions: false,
         sortAt: startTime || new Date().toISOString(),
+        readKey: `att-in-${uid}-${startTime}`,
       });
     } else if (hasClockedIn) {
+      const fallbackSortAt = new Date().toISOString();
       items.push({
         id: idBase++,
         icon: status === "LATE" ? "⚠️" : "⏰",
         name: status === "LATE" ? "지각" : "출근",
         message: status === "LATE"
-          ? `${name}님이 예정된 시간보다 늦게 출근했습니다.`
+          ? `${name}님이 지각 출근했습니다.`
           : `${name}님이 출근했습니다.`,
-        time: "오늘",
+        time: formatRelativeTime(fallbackSortAt),
         category: "오늘",
         isRead: false,
         hasActions: false,
-        sortAt: new Date().toISOString(),
+        sortAt: fallbackSortAt,
+        readKey: `att-in-${uid}-${fallbackSortAt}`,
       });
     }
     if (endTime) {
       const endTimePart = formatTimeForDisplay(endTime);
-      const hoursText = totalHours != null ? ` 총 ${Math.round(totalHours * 10) / 10}시간 근무.` : ".";
+      const hoursText = totalHours != null ? ` 총 ${Math.round(totalHours * 10) / 10}시간 근무했습니다.` : "";
       items.push({
         id: idBase++,
         icon: "🏠",
         name: "퇴근",
-        message: `${name}님이 ${endTimePart}에 퇴근했습니다.${hoursText}`,
+        message: `${name}님이 (${endTimePart}) 퇴근했습니다.${hoursText}`,
         time: formatRelativeTime(endTime),
         category: getCategory(endTime),
         isRead: false,
         hasActions: false,
         sortAt: endTime || new Date().toISOString(),
+        readKey: `att-out-${uid}-${endTime}`,
       });
     } else if (hasClockedOut && !startTime) {
+      const fallbackSortAt = new Date().toISOString();
       items.push({
         id: idBase++,
         icon: "🏠",
         name: "퇴근",
         message: `${name}님이 퇴근했습니다.`,
-        time: "오늘",
+        time: formatRelativeTime(fallbackSortAt),
         category: "오늘",
         isRead: false,
         hasActions: false,
-        sortAt: new Date().toISOString(),
+        sortAt: fallbackSortAt,
+        readKey: `att-out-${uid}-${fallbackSortAt}`,
       });
     }
   }
@@ -244,9 +245,13 @@ function mapSchedulesToItems(
     const msg = timeStr
       ? `${workerName}님이 ${dateLabel} 근무를 등록했습니다. (${timeStr})`
       : `${workerName}님이 ${dateLabel} 근무를 등록했습니다.`;
-    const key = `${workDate}-${s.scheduleId ?? idBase}-${workerName}`;
+    const stableSchedId = s.scheduleId ?? s.id ?? (s as any).schedule_id;
+    const stableTime = (createdAt || "").toString().replace(/\.\d{3}Z?$/i, "").slice(0, 19);
+    const readKeyId = stableSchedId != null ? String(stableSchedId) : `${workDate ?? ""}-${workerName}-${(stableTime || workDate) ?? ""}`;
+    const key = `${workDate}-${readKeyId}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const readKeyBase = `sched-${workDate ?? ""}-${readKeyId}`;
     if (createdAt) {
       const parsed = parseDateForRelative(createdAt);
       const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
@@ -261,6 +266,7 @@ function mapSchedulesToItems(
           isRead: false,
           hasActions: false,
           sortAt: createdAt,
+          readKey: readKeyBase,
         });
       } else if (workDate && workDate >= todayStr) {
         const fallbackSortAt = `${workDate}T00:00:00`;
@@ -274,6 +280,7 @@ function mapSchedulesToItems(
           isRead: false,
           hasActions: false,
           sortAt: fallbackSortAt,
+          readKey: readKeyBase,
         });
       }
     } else if (workDate && workDate >= todayStr) {
@@ -288,6 +295,7 @@ function mapSchedulesToItems(
         isRead: false,
         hasActions: false,
         sortAt: fallbackSortAt,
+        readKey: readKeyBase,
       });
     }
   }
@@ -296,9 +304,23 @@ function mapSchedulesToItems(
 
 export default function BossNotificationScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
   const [notifications, setNotifications] = useState<BossNotificationItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [, setStoreId] = useState<number | null>(null);
+  const setBossUnread = useSetUnreadNotification("boss");
+  const triggerNotificationRefetch = useTriggerNotificationRefetch();
+
+  const handleBack = () => {
+    try {
+      const returnTo = typeof params.returnTo === "string" ? decodeURIComponent(params.returnTo) : "";
+      if (returnTo && returnTo.includes("/boss/") && !returnTo.includes("/Notification")) {
+        router.replace(returnTo as any);
+        return;
+      }
+    } catch (_) {}
+    router.back();
+  };
 
   const getAuthHeader = useCallback(async (): Promise<Record<string, string>> => {
     try {
@@ -345,7 +367,6 @@ export default function BossNotificationScreen() {
         api.get(`/api/v1/stores/${id}`, { headers }).catch(() => ({ data: {} })),
         api.get("/api/v1/schedules/weekly", { params: { storeId: id, startDate: weekStart }, headers }).catch(() => ({ data: [] })),
       ]);
-      const modificationItems = modList.map(mapToModificationItem);
       const dataRoot = salaryRes.data?.data ?? salaryRes.data;
       const workers = dataRoot?.payments ?? dataRoot?.workers ?? [];
       const requestedWorkers = workers.filter(
@@ -361,8 +382,70 @@ export default function BossNotificationScreen() {
       const attendanceItems = mapAttendancesToItems(Array.isArray(attList) ? attList : []);
 
       const schedPayload = schedulesRes.data?.data ?? schedulesRes.data;
-      const schedList = Array.isArray(schedPayload) ? schedPayload : schedPayload?.list ?? schedPayload?.items ?? [];
-      const scheduleItems = mapSchedulesToItems(schedList as Parameters<typeof mapSchedulesToItems>[0], weekStart);
+      const schedListBase = Array.isArray(schedPayload) ? schedPayload : schedPayload?.list ?? schedPayload?.items ?? [];
+
+      const getWeekStartForDate = (dateStr: string) => {
+        const d = new Date(dateStr);
+        if (Number.isNaN(d.getTime())) return weekStart;
+        const sun = new Date(d);
+        sun.setDate(d.getDate() - d.getDay());
+        return sun.toISOString().split("T")[0];
+      };
+      const weekStartsNeeded = new Set<string>([weekStart]);
+      for (const m of modList as any[]) {
+        if (m?.targetType === "SCHEDULE" || m?.target_type === "SCHEDULE") {
+          const td = m?.targetDate ?? m?.target_date ?? "";
+          if (td) weekStartsNeeded.add(getWeekStartForDate(td));
+        }
+      }
+      let schedListForMap = schedListBase;
+      const extraWeeks = [...weekStartsNeeded].filter((ws) => ws !== weekStart);
+      if (extraWeeks.length > 0) {
+        const extraRes = await Promise.all(
+          extraWeeks.map((startDate) =>
+            api.get("/api/v1/schedules/weekly", { params: { storeId: id, startDate }, headers }).catch(() => ({ data: [] }))
+          )
+        );
+        for (const res of extraRes) {
+          const payload = res?.data?.data ?? res?.data;
+          const list = Array.isArray(payload) ? payload : payload?.list ?? payload?.items ?? [];
+          schedListForMap = schedListForMap.concat(list);
+        }
+      }
+
+      const scheduleItems = mapSchedulesToItems(schedListBase as Parameters<typeof mapSchedulesToItems>[0], weekStart);
+
+      const scheduleTimeByTargetId = new Map<number, string>();
+      const flatSched = (schedListForMap as any[]).flatMap((x: any) =>
+        Array.isArray(x?.schedules) ? x.schedules : Array.isArray(x?.items) ? x.items : [x]
+      );
+      for (const s of flatSched) {
+        const slotTime =
+          s?.time ??
+          (s?.startTime != null && s?.endTime != null ? `${s.startTime}~${s.endTime}` : null) ??
+          "";
+        const tSlot = typeof slotTime === "string" ? slotTime.trim() : "";
+        const workers = Array.isArray(s?.workers) ? s.workers : [];
+        if (workers.length > 0) {
+          for (const w of workers) {
+            const sid = w?.scheduleId ?? w?.schedule_id ?? w?.id;
+            const wTime =
+              w?.time ??
+              (w?.startTime != null && w?.endTime != null ? `${w.startTime}~${w.endTime}` : null) ??
+              "";
+            const t = (typeof wTime === "string" ? wTime.trim() : "") || tSlot;
+            if (sid != null && t) scheduleTimeByTargetId.set(Number(sid), t);
+          }
+          if (tSlot && (s?.scheduleId ?? s?.id ?? s?.schedule_id) != null) {
+            const sid = s?.scheduleId ?? s?.id ?? s?.schedule_id;
+            scheduleTimeByTargetId.set(Number(sid), tSlot);
+          }
+        } else {
+          const sid = s?.scheduleId ?? s?.id ?? s?.schedule_id;
+          if (sid != null && tSlot) scheduleTimeByTargetId.set(Number(sid), tSlot);
+        }
+      }
+      const modificationItems = modList.map((m) => mapToModificationItem(m, scheduleTimeByTargetId));
 
       const paydayItems: BossNotificationItemData[] = [];
       const storeData = storeRes.data?.data ?? storeRes.data;
@@ -393,15 +476,18 @@ export default function BossNotificationScreen() {
           : daysUntilPay === 1
             ? "사장님, 내일은 급여 정산일입니다!"
             : `사장님, ${daysUntilPay}일 뒤는 급여 정산일입니다!`;
+        const paydaySortAt = new Date().toISOString();
         paydayItems.push({
           id: 4000000,
           icon: "📅",
           name: "안내",
           message: msg,
-          time: "오늘",
+          time: formatRelativeTime(paydaySortAt),
           category: "오늘",
           isRead: false,
           hasActions: false,
+          sortAt: paydaySortAt,
+          readKey: "payday-4000000",
         });
       }
       const combined = [...modificationItems, ...salaryItems, ...attendanceItems, ...scheduleItems, ...paydayItems];
@@ -411,21 +497,25 @@ export default function BossNotificationScreen() {
         return tb - ta;
       });
       try {
-        const raw = await AsyncStorage.getItem(BOSS_READ_IDS_KEY);
-        const readIds: number[] = raw ? JSON.parse(raw) : [];
-        const readSet = new Set(readIds);
+        const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
+        const readKeys: string[] = raw ? JSON.parse(raw) : [];
+        const readSet = new Set(readKeys);
         combined.forEach((n) => {
-          if (readSet.has(n.id)) n.isRead = true;
+          if (n.readKey && readSet.has(n.readKey)) n.isRead = true;
         });
       } catch (_) {}
       setNotifications(combined);
+      const unreadCount = combined.filter((n) => !n.isRead).length;
+      setBossUnread(unreadCount);
+      triggerNotificationRefetch();
     } catch (e) {
       console.error("알림 목록 조회 실패:", e);
       setNotifications([]);
+      setBossUnread(0);
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeader]);
+  }, [getAuthHeader, setBossUnread, triggerNotificationRefetch]);
 
   useFocusEffect(
     useCallback(() => {
@@ -434,34 +524,40 @@ export default function BossNotificationScreen() {
   );
 
   const handleNotificationPress = (id: number) => {
+    const item = notifications.find((n) => n.id === id);
+    const readKey = item?.readKey;
+    if (!readKey) return;
+    if (!item.isRead) setBossUnread((prev) => Math.max(0, (prev ?? 0) - 1));
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(BOSS_READ_IDS_KEY);
-        const readIds: number[] = raw ? JSON.parse(raw) : [];
-        if (!readIds.includes(id)) {
-          readIds.push(id);
-          await AsyncStorage.setItem(BOSS_READ_IDS_KEY, JSON.stringify(readIds));
+        const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
+        const readKeys: string[] = raw ? JSON.parse(raw) : [];
+        if (!readKeys.includes(readKey)) {
+          readKeys.push(readKey);
+          await AsyncStorage.setItem(BOSS_READ_KEYS_KEY, JSON.stringify(readKeys));
         }
       } catch (_) {}
     })();
   };
 
-  const handleMarkAllRead = () => {
-    const ids = notifications.map((n) => n.id);
-    if (ids.length === 0) return;
+  const handleMarkAllRead = async () => {
+    const readKeys = notifications.map((n) => n.readKey).filter(Boolean) as string[];
+    setBossUnread(0);
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(BOSS_READ_IDS_KEY);
-        const readIds: number[] = raw ? JSON.parse(raw) : [];
-        const set = new Set(readIds);
-        ids.forEach((id) => set.add(id));
-        await AsyncStorage.setItem(BOSS_READ_IDS_KEY, JSON.stringify([...set]));
-      } catch (_) {}
-    })();
+    try {
+      const headers = await getAuthHeader();
+      await markAllNotificationsRead(headers);
+      triggerNotificationRefetch();
+    } catch (_) {}
+    try {
+      const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
+      const existing: string[] = raw ? JSON.parse(raw) : [];
+      const set = new Set([...existing, ...readKeys]);
+      await AsyncStorage.setItem(BOSS_READ_KEYS_KEY, JSON.stringify([...set]));
+    } catch (_) {}
   };
 
   const handleApprove = async (id: number) => {
@@ -501,7 +597,9 @@ export default function BossNotificationScreen() {
           try {
             const headers = await getAuthHeader();
             await updateModificationStatus(id, { status: "REJECTED" }, headers);
-            setNotifications((prev) => prev.filter((n) => n.id !== id));
+            setNotifications((prev) =>
+              prev.map((n) => (n.id === id ? { ...n, hasActions: false, requestStatus: "REJECTED" as const } : n))
+            );
             Alert.alert("거절 완료", "요청을 거절했습니다.");
           } catch (e: any) {
             const status = e?.response?.status;
@@ -530,7 +628,7 @@ export default function BossNotificationScreen() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.pageHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Ionicons name="chevron-back" size={28} color="#000" />
           </TouchableOpacity>
           <Text style={styles.pageHeaderTitle}>알림 센터</Text>
@@ -550,7 +648,7 @@ export default function BossNotificationScreen() {
       <StatusBar barStyle="dark-content" />
       <View style={styles.pageHeader}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleBack}
           style={styles.backButton}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
