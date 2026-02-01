@@ -4,15 +4,15 @@ import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // 👇 공통 컴포넌트
@@ -22,8 +22,8 @@ import { useNotificationCount } from "../../../hooks/useNotificationCount";
 
 // 👇 대시보드 내부 컴포넌트 & 데이터
 import {
-    ScheduleCard,
-    WorkerCard,
+  ScheduleCard,
+  WorkerCard,
 } from "../../../components/dashboard/BossDashboard";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Dashboard";
@@ -708,7 +708,6 @@ export default function DashboardScreen() {
         <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
           <Text style={{ fontSize: 25, fontWeight: "bold" }}>
             반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text> 님!👋
-            👋
           </Text>
         </View>
 
