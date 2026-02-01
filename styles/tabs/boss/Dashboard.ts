@@ -60,11 +60,13 @@ export const styles = StyleSheet.create({
   registerButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#E0D5FF",
     paddingVertical: 15,
     paddingHorizontal: 30,
     borderRadius: 30,
     elevation: 3,
+    width: 240,
   },
   registerButtonText: {
     color: "#9747FF",

@@ -148,7 +148,7 @@ export const styles = StyleSheet.create({
   // =========================
   emptyContainer: {
     flex: 1,
-    paddingBottom: 100, // Footer 높이만큼 여백
+    paddingBottom: 10, // Footer 높이만큼 여백
     alignItems: "center",
     justifyContent: "center",
   },
@@ -163,6 +163,7 @@ export const styles = StyleSheet.create({
     marginTop: 20,
     color: "#000",
     marginBottom: 5,
+    textAlign: "center",
   },
   emptyDesc: {
     fontSize: 15,
@@ -174,11 +175,13 @@ export const styles = StyleSheet.create({
   registerButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#E0D5FF",
     paddingVertical: 15,
     paddingHorizontal: 30,
     borderRadius: 30,
     elevation: 3,
+    width: 240,
   },
   registerButtonText: {
     color: "#9747FF",
