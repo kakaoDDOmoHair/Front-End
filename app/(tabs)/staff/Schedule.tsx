@@ -4,18 +4,18 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Keyboard,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+    Alert,
+    Keyboard,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
 import api from "../../../constants/api";
 import type { ModificationTargetType } from "../../../services/modificationApi";
@@ -25,6 +25,7 @@ import { Calendar } from "react-native-calendars";
 import CustomDatePicker from "../../../components/common/CustomDatePicker";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
+import { useTriggerNotificationRefetch } from "../../../contexts/UnreadNotificationContext";
 import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/staff/Schedule";
 
@@ -73,6 +74,7 @@ const WorkerSchedule: React.FC = () => {
   const [requestReason, setRequestReason] = useState("");
   const router = useRouter();
   const notificationCount = useNotificationCount("staff");
+  const triggerNotificationRefetch = useTriggerNotificationRefetch();
 
   const selectedWorkDetail = workHistory.find((w) => w.date === selectedDate);
 
@@ -230,15 +232,26 @@ const WorkerSchedule: React.FC = () => {
     fetchMyScheduleData();
   }, []);
 
+  /** "HH:mm"만 있을 때 야간(22:00~00:00 등) 처리: end ≤ start면 다음날 00:00으로 보고 분 반환 */
+  const getScheduleWorkMinutes = (startTime: string, endTime: string): number => {
+    const [startH, startM] = startTime.split(":").map(Number);
+    const [endH, endM] = endTime.split(":").map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    if (endMinutes <= startMinutes) {
+      const toMidnight = 24 * 60 - startMinutes;
+      const fromMidnight = endMinutes;
+      return toMidnight + fromMidnight;
+    }
+    return endMinutes - startMinutes;
+  };
+
   const getBadgeInfo = (dateString: string) => {
     const data = workHistory.find((d) => d.date === dateString);
     if (!data) return null;
 
-    const [startH, startM] = data.startTime.split(":").map(Number);
-    const [endH, endM] = data.endTime.split(":").map(Number);
-
-    const totalMinutes = endH * 60 + endM - (startH * 60 + startM);
-    const actualWorkMinutes = totalMinutes - data.breakTime;
+    const totalMinutes = getScheduleWorkMinutes(data.startTime, data.endTime);
+    const actualWorkMinutes = totalMinutes - (data.breakTime ?? 0);
 
     const finalMinutes = actualWorkMinutes > 0 ? actualWorkMinutes : 0;
     const h = Math.floor(finalMinutes / 60);
@@ -289,6 +302,7 @@ const WorkerSchedule: React.FC = () => {
         setStartTime("");
         setEndTime("");
         fetchMyScheduleData();
+        triggerNotificationRefetch();
       }
     } catch (error) {
       Alert.alert("실패", "서버 에러가 발생했습니다.");

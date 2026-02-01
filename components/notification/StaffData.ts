@@ -10,6 +10,8 @@ export interface NotificationItemData {
   isRead: boolean;
   /** 정렬용(최신 위) — ISO 문자열 또는 타임스탬프 */
   sortAt?: string;
+  /** 읽음 저장용 고정 키 (재로드해도 동일한 항목 식별) */
+  readKey?: string;
 }
 
 

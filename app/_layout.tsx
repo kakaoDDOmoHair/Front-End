@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import { UnreadNotificationProvider } from '@/contexts/UnreadNotificationContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -13,6 +14,7 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <UnreadNotificationProvider>
       {/* 👇 모든 화면의 헤더를 일단 다 끕니다 */}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
@@ -21,6 +23,7 @@ export default function RootLayout() {
         <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true, title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />
+      </UnreadNotificationProvider>
     </ThemeProvider>
   );
 }

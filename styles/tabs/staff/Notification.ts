@@ -33,6 +33,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#000',
     textAlign: 'center',
+    paddingLeft: 40,
   },
   markAllReadText: {
     fontSize: 14,

@@ -7,8 +7,20 @@ export interface BossNotificationItemData {
   category: '오늘' | '어제' | '이번 주';
   isRead: boolean;
   hasActions?: boolean; // 승인/거절 버튼 표시 여부
+  /** 정정 요청 처리 결과 — 수락/거절 후 버튼 대신 "수락됨"/"거절됨" 표시 */
+  requestStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   /** 정렬용(최신 위) — ISO 문자열 */
   sortAt?: string;
+  /** 읽음 저장용 고정 키 (재로드해도 동일한 항목 식별) */
+  readKey?: string;
+  /** 정정 요청 시 이전 기록(비교용) */
+  beforeValue?: string;
+  /** 정정 요청 시 요청 내용(비교용) */
+  afterValue?: string;
+  /** 정정 요청 대상 날짜 (예: 2025-01-15) */
+  targetDate?: string;
+  /** 정정 요청 대상 라벨 (예: 근무 시간, 스케줄) */
+  typeLabel?: string;
 }
 
 export const BOSS_NOTIFICATIONS: BossNotificationItemData[] = [
