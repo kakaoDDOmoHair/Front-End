@@ -3,16 +3,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import Footer from "../../../components/common/Footer";
@@ -34,16 +34,27 @@ export default function StaffContractScreen() {
   const [contracts, setContracts] = useState<ContractData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 가짜 알바생 이름 (사장님 페이지와 동일)
-  const FAKE_NAMES = ["김현아", "이민수", "박지영", "최동욱", "정수빈"];
-
   useEffect(() => {
     const init = async () => {
       try {
         const sid = await AsyncStorage.getItem("storeId");
+        const username = await AsyncStorage.getItem("username");
+
         if (sid) {
           const parsedStoreId = Number(sid);
-          await fetchContracts(parsedStoreId);
+          // 사용자 이름 가져오기
+          let myName = "";
+          if (username) {
+            try {
+              const meRes = await api.get("/api/v1/users/me", {
+                params: { username },
+              });
+              myName = meRes.data?.name || meRes.data?.data?.name || "";
+            } catch (e) {
+              console.error("사용자 정보 조회 실패:", e);
+            }
+          }
+          await fetchContracts(parsedStoreId, myName);
         }
       } catch (e) {
         console.error("초기화 오류:", e);
@@ -52,43 +63,57 @@ export default function StaffContractScreen() {
       }
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 📡 계약서 목록 조회 API (사장님이 등록한 계약서 조회)
-  const fetchContracts = async (currentStoreId: number) => {
+  // 📡 내 계약서 목록 조회 API (알바생 본인 계약서만 조회)
+  const fetchContracts = async (currentStoreId: number, myName: string) => {
     try {
+      console.log(
+        `📡 내 계약서 조회: storeId=${currentStoreId}, myName=${myName}`,
+      );
+
       const response = await api.get("/api/v1/contracts", {
         params: { storeId: currentStoreId, size: 100 },
       });
 
+      console.log("📡 계약서 목록 API 응답:", response.data);
+
       const content = response.data.content || [];
 
-      const mappedData: ContractData[] = content.map(
-        (item: any, index: number) => {
-          const isActive = item.status === "ACTIVE" || item.status === "DRAFT";
+      // 본인 계약서만 필터링 (workerName이 내 이름과 일치하는 것만)
+      const myContent = content.filter((item: any) => {
+        return item.workerName === myName;
+      });
 
-          let statusText = "해지됨";
-          if (item.status === "ACTIVE") statusText = "계약 중";
-          if (item.status === "DRAFT") statusText = "계약 중";
-          if (item.status === "ENDED") statusText = "계약 종료";
-
-          const fakeName = FAKE_NAMES[index % FAKE_NAMES.length];
-
-          return {
-            id: String(item.contractId),
-            name: fakeName,
-            location: item.storeName || "내 매장",
-            status: statusText,
-            wage: item.wage,
-            isResigned: !isActive,
-            fileUrl: item.fileUrl || null,
-            workingHours: "주 12시간", // 기본값
-            contractPeriod: "2026-01-20 ~ 2027-01-20", // 기본값
-            approvedDate: "2026-01-15", // 기본값
-          };
-        },
+      console.log(
+        `📋 전체 ${content.length}개 중 내 계약서 ${myContent.length}개 (내 이름: ${myName})`,
       );
+
+      const mappedData: ContractData[] = myContent.map((item: any) => {
+        const isActive = item.status === "ACTIVE" || item.status === "DRAFT";
+
+        let statusText = "해지됨";
+        if (item.status === "ACTIVE") statusText = "계약 중";
+        if (item.status === "DRAFT") statusText = "계약 중";
+        if (item.status === "ENDED") statusText = "계약 종료";
+
+        // API 응답에서 실제 이름 사용
+        const workerName =
+          item.userName || item.workerName || item.name || "나";
+
+        return {
+          id: String(item.contractId),
+          name: workerName,
+          location: item.storeName || "내 매장",
+          status: statusText,
+          wage: item.wage,
+          isResigned: !isActive,
+          fileUrl: item.fileUrl || null,
+          workingHours: "주 12시간", // 기본값
+          contractPeriod: "2026-01-20 ~ 2027-01-20", // 기본값
+          approvedDate: "2026-01-15", // 기본값
+        };
+      });
 
       setContracts(mappedData.sort((a, b) => Number(b.id) - Number(a.id)));
     } catch (error) {
