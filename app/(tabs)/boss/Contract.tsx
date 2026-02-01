@@ -5,16 +5,16 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import Footer from "../../../components/common/Footer";
@@ -32,6 +32,12 @@ export interface ContractData {
   wage: number;
   isResigned: boolean;
   fileUrl?: string; // 서버 이미지/PDF 경로 (다운로드용)
+}
+
+// 알바생 정보 인터페이스
+interface StaffMember {
+  userId: number;
+  name: string;
 }
 
 const BossContract: React.FC<{
@@ -96,13 +102,17 @@ export default function ContractScreen() {
   const notificationCount = useNotificationCount("boss");
   const [contracts, setContracts] = useState<ContractData[]>([]);
   const [storeId, setStoreId] = useState<number | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
 
   // 업로드 모달 상태
   const [isScanning, setIsScanning] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
+
+  // 알바생 선택 상태
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [showStaffPicker, setShowStaffPicker] = useState(false);
 
   // 열람 모달 상태
   const [viewModalVisible, setViewModalVisible] = useState(false);
@@ -115,39 +125,31 @@ export default function ContractScreen() {
     const init = async () => {
       try {
         const sid = await AsyncStorage.getItem("storeId");
-        const uid = await AsyncStorage.getItem("userId");
 
-        if (!sid || !uid) {
-          Alert.alert(
-            "알림",
-            "매장 또는 사용자 정보가 없습니다. 다시 로그인해 주세요.",
-          );
+        if (!sid) {
+          Alert.alert("알림", "매장 정보가 없습니다. 다시 로그인해 주세요.");
           return;
         }
 
         const parsedStoreId = Number(sid);
-        const parsedUserId = Number(uid);
 
-        if (!Number.isFinite(parsedStoreId) || !Number.isFinite(parsedUserId)) {
+        if (!Number.isFinite(parsedStoreId)) {
           Alert.alert(
             "알림",
-            "매장 또는 사용자 정보가 올바르지 않습니다. 다시 로그인해 주세요.",
+            "매장 정보가 올바르지 않습니다. 다시 로그인해 주세요.",
           );
           return;
         }
 
         setStoreId(parsedStoreId);
-        setUserId(parsedUserId);
         await fetchContracts(parsedStoreId);
+        await fetchStaffList(parsedStoreId);
       } catch (e) {
         console.error(e);
       }
     };
     init();
   }, []);
-
-  // 가짜 알바생 이름 목록
-  const FAKE_NAMES = ["김현아", "이민수", "박지영", "최동욱", "정수빈"];
 
   // 📡 계약서 목록 조회 API
   const fetchContracts = async (currentStoreId: number) => {
@@ -156,35 +158,64 @@ export default function ContractScreen() {
         params: { storeId: currentStoreId, size: 100 },
       });
 
+      console.log("📡 계약서 목록 API 응답:", response.data);
+
       const content = response.data.content || [];
 
-      const mappedData: ContractData[] = content.map(
-        (item: any, index: number) => {
-          const isActive = item.status === "ACTIVE" || item.status === "DRAFT";
+      const mappedData: ContractData[] = content.map((item: any) => {
+        const isActive = item.status === "ACTIVE" || item.status === "DRAFT";
 
-          let statusText = "해지됨";
-          if (item.status === "ACTIVE") statusText = "계약 중";
-          if (item.status === "DRAFT") statusText = "계약 중";
-          if (item.status === "ENDED") statusText = "계약 종료";
+        let statusText = "해지됨";
+        if (item.status === "ACTIVE") statusText = "계약 중";
+        if (item.status === "DRAFT") statusText = "계약 중";
+        if (item.status === "ENDED") statusText = "계약 종료";
 
-          // API 이름 대신 가짜 이름 사용
-          const fakeName = FAKE_NAMES[index % FAKE_NAMES.length];
+        // API 응답에서 실제 이름 사용
+        const workerName = item.userName || item.workerName || item.name || "알바생";
 
-          return {
-            id: String(item.contractId),
-            name: fakeName,
-            location: item.storeName || "내 매장",
-            status: statusText,
-            wage: item.wage,
-            isResigned: !isActive,
-            fileUrl: item.fileUrl || null, // 여전히 다운로드용으로는 사용
-          };
-        },
-      );
+        return {
+          id: String(item.contractId),
+          name: workerName,
+          location: item.storeName || "내 매장",
+          status: statusText,
+          wage: item.wage,
+          isResigned: !isActive,
+          fileUrl: item.fileUrl || null,
+        };
+      });
 
       setContracts(mappedData.sort((a, b) => Number(b.id) - Number(a.id)));
     } catch (error) {
       console.error("계약서 목록 로드 실패:", error);
+    }
+  };
+
+  // 📡 알바생 목록 조회 API
+  const fetchStaffList = async (currentStoreId: number) => {
+    try {
+      console.log(
+        `📡 알바생 목록 요청: /api/v1/stores/${currentStoreId}/workers`,
+      );
+      const response = await api.get(
+        `/api/v1/stores/${currentStoreId}/workers`,
+      );
+
+      console.log("📡 알바생 목록 API 응답:", response.data);
+
+      // 응답이 배열 그대로 반환됨
+      const workers = Array.isArray(response.data) ? response.data : [];
+
+      const staffMembers: StaffMember[] = workers.map((w: any) => ({
+        userId: w.userId,
+        name: w.name,
+      }));
+
+      setStaffList(staffMembers);
+      console.log("📋 알바생 목록:", staffMembers);
+    } catch (error: any) {
+      console.error("❌ 알바생 목록 로드 실패:", error);
+      console.error("❌ 에러 상세:", error.response?.data);
+      setStaffList([]);
     }
   };
 
@@ -224,10 +255,12 @@ export default function ContractScreen() {
   // 📡 계약서 등록 - /api/v1/contracts/scan API 호출
   const handleUpload = async () => {
     if (!selectedImage) return Alert.alert("알림", "이미지를 선택해주세요.");
-    if (!storeId || !userId)
+    if (!selectedStaff)
+      return Alert.alert("알림", "계약서를 등록할 알바생을 선택해주세요.");
+    if (!storeId)
       return Alert.alert(
         "알림",
-        "매장 또는 사용자 정보를 불러오지 못했습니다. 다시 로그인해 주세요.",
+        "매장 정보를 불러오지 못했습니다. 다시 로그인해 주세요.",
       );
 
     setIsAnalyzing(true);
@@ -240,7 +273,7 @@ export default function ContractScreen() {
         name: "contract.jpg",
       } as any);
       formData.append("storeId", String(storeId));
-      formData.append("userId", String(userId));
+      formData.append("userId", String(selectedStaff.userId));
 
       const response = await api.post("/api/v1/contracts/scan", formData, {
         headers: {
@@ -255,6 +288,8 @@ export default function ContractScreen() {
       setIsAnalyzing(false);
       setIsScanning(false);
       setSelectedImage(null);
+      setSelectedStaff(null);
+      setShowStaffPicker(false);
       Alert.alert("성공", "계약서가 등록되었습니다.");
     } catch (error) {
       console.error("❌ 계약서 등록 실패:", error);
@@ -438,6 +473,100 @@ export default function ContractScreen() {
         <View style={[styles.modalOverlay, { justifyContent: "center" }]}>
           <View style={styles.scannerContainer}>
             <Text style={styles.scannerTitle}>계약서 등록</Text>
+
+            {/* 알바생 선택 영역 */}
+            {!isAnalyzing && (
+              <View style={{ marginBottom: 15, paddingHorizontal: 10 }}>
+                <Text style={{ fontSize: 14, color: "#666", marginBottom: 8 }}>
+                  알바생 선택
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    borderWidth: 1,
+                    borderColor: selectedStaff ? "#9747FF" : "#ddd",
+                    borderRadius: showStaffPicker ? 0 : 10,
+                    borderTopLeftRadius: 10,
+                    borderTopRightRadius: 10,
+                    padding: 12,
+                    backgroundColor: "#fff",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                  onPress={() => setShowStaffPicker(!showStaffPicker)}
+                >
+                  <Text
+                    style={{
+                      color: selectedStaff ? "#333" : "#999",
+                      fontSize: 15,
+                    }}
+                  >
+                    {selectedStaff ? selectedStaff.name : "알바생을 선택하세요"}
+                  </Text>
+                  <Ionicons
+                    name={showStaffPicker ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color="#666"
+                  />
+                </TouchableOpacity>
+                {/* 펼쳐지는 알바생 목록 */}
+                {showStaffPicker && (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderTopWidth: 0,
+                      borderColor: "#ddd",
+                      borderBottomLeftRadius: 10,
+                      borderBottomRightRadius: 10,
+                      backgroundColor: "#fff",
+                      maxHeight: 150,
+                    }}
+                  >
+                    <ScrollView nestedScrollEnabled>
+                      {staffList.length > 0 ? (
+                        staffList.map((item) => (
+                          <TouchableOpacity
+                            key={String(item.userId)}
+                            style={{
+                              padding: 12,
+                              borderBottomWidth: 1,
+                              borderBottomColor: "#eee",
+                              backgroundColor:
+                                selectedStaff?.userId === item.userId
+                                  ? "#f0e6ff"
+                                  : "#fff",
+                            }}
+                            onPress={() => {
+                              setSelectedStaff(item);
+                              setShowStaffPicker(false);
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 15,
+                                color:
+                                  selectedStaff?.userId === item.userId
+                                    ? "#9747FF"
+                                    : "#333",
+                              }}
+                            >
+                              {item.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))
+                      ) : (
+                        <View style={{ padding: 15, alignItems: "center" }}>
+                          <Text style={{ color: "#999" }}>
+                            등록된 알바생이 없습니다.
+                          </Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+
             <View style={styles.guideContainer}>
               {isAnalyzing ? (
                 <View
@@ -508,6 +637,8 @@ export default function ContractScreen() {
                 onPress={() => {
                   setIsScanning(false);
                   setSelectedImage(null);
+                  setSelectedStaff(null);
+                  setShowStaffPicker(false);
                 }}
                 disabled={isAnalyzing}
               >
