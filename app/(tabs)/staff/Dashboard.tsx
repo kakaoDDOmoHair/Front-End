@@ -21,6 +21,7 @@ import Header from "../../../components/common/Header";
 import { ScheduleCard } from "../../../components/dashboard/BossDashboard";
 import { NOTIFICATIONS as INITIAL_NOTIFICATIONS } from "../../../components/notification/StaffData";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/staff/Dashboard";
 
 // --- 헬퍼 함수: Haversine 공식을 이용한 두 좌표 사이의 거리 계산 (m 단위) ---
@@ -252,6 +253,7 @@ export default function DashboardScreen() {
   const [todoText, setTodoText] = useState("");
   const [todoList, setTodoList] = useState<TodoItem[]>([]);
   const [notifications] = useState(INITIAL_NOTIFICATIONS);
+  const notificationCount = useNotificationCount("staff");
 
   const attendanceRequestRef = useRef(false);
   const [dailyAttendances, setDailyAttendances] = useState<
@@ -466,9 +468,11 @@ export default function DashboardScreen() {
       const response = await api.get("/api/v1/attendances/daily", {
         params: { storeId, date: today },
       });
-      const payload = response.data?.data || response.data;
-      const list =
-        payload?.list || payload?.attendances || payload?.items || [];
+      // 백엔드: 객체 응답 시 data.data가 리스트, 배열이면 그대로
+      const payload = response.data?.data ?? response.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : payload?.list ?? payload?.attendances ?? payload?.items ?? [];
       const normalized = Array.isArray(list) ? list : [];
       const myItems = normalized.filter(
         (item: any) =>
@@ -481,6 +485,15 @@ export default function DashboardScreen() {
       const status =
         my?.status || my?.attendanceStatus || my?.state || my?.attendance_state;
       setTodayStatus(status || null);
+      // daily에 attendanceId 있으면 출근중 복원 시 참고 (선택)
+      const myAid = my?.attendanceId ?? my?.attendance_id ?? my?.id;
+      if (myAid != null && (status === "ON" || status === "LATE")) {
+        const idNum = toValidAttendanceId(myAid);
+        if (idNum) {
+          setAttendanceId(idNum);
+          await AsyncStorage.setItem("attendanceId", String(idNum));
+        }
+      }
     } catch (e) {
       setDailyAttendances([]);
       setTodayStatus(null);
@@ -1076,6 +1089,16 @@ export default function DashboardScreen() {
         });
 
         const newId = extractAttendanceIdFromResponse(response?.data);
+        // 백엔드: 지각 시 status "LATE", 정상 시 "ON" 반환 (한국 시간 기준 판단)
+        const resStatus = (response?.data?.status ?? response?.data?.data?.status ?? "ON") as string;
+        const normalizedStatus = String(resStatus).toUpperCase() === "LATE" ? "LATE" : "ON";
+        setTodayStatus(normalizedStatus);
+
+        if (__DEV__) {
+          console.log("[clock-in] 응답 전체 response.data:", JSON.stringify(response?.data, null, 2));
+          console.log("[clock-in] status(원본):", resStatus, "→ 화면 표시:", normalizedStatus === "LATE" ? "지각(근무중)" : "정상출근");
+        }
+
         if (newId) {
           const idNum = Number(newId);
           setAttendanceId(idNum);
@@ -1108,8 +1131,20 @@ export default function DashboardScreen() {
         }
 
         if (!aid) {
-          // 서버로 best-effort 동기화 시도
+          // 서버로 best-effort 동기화 시도 (monthly)
           aid = await syncWorkingFromServerByMonthly(userId);
+        }
+        if (!aid && userId) {
+          // 퇴근 전 attendanceId 복구: 현재 출근 중 API 사용
+          try {
+            const currentRes = await api.get("/api/v1/attendances/current", {
+              params: { userId },
+            });
+            const currentAid = currentRes?.data?.attendanceId ?? null;
+            aid = toValidAttendanceId(currentAid);
+          } catch (_e) {
+            // 무시 후 아래 알림으로 진행
+          }
         }
 
         if (!aid) {
@@ -1214,7 +1249,6 @@ export default function DashboardScreen() {
     return wifiMatch || (hasLocationInfo && effectiveDistance <= RELAXED_DISTANCE_M) || roundedMatch;
   }, [currentWifiName, bossStoreInfo, currentCoords, connectionStatus.gps]);
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
   const addTodo = () => {
     if (todoText.trim() === "") return;
     setTodoList([
@@ -1236,7 +1270,7 @@ export default function DashboardScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
-        <Header notificationCount={unreadCount} />
+        <Header notificationCount={notificationCount} />
 
         {!currentStoreId ? (
           <View style={styles.emptyContainer}>
@@ -1281,7 +1315,16 @@ export default function DashboardScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>오늘도 화이팅! 💰</Text>
-              <Text style={styles.statusText}>현재 상태 : {isWorking ? "근무 중" : "출근 전"}</Text>
+              <Text style={styles.statusText}>
+                현재 상태 :{" "}
+                {!isWorking
+                  ? "출근 전"
+                  : todayStatus === "LATE"
+                    ? "지각(근무중)"
+                    : todayStatus === "ON"
+                      ? "정상출근"
+                      : "근무 중"}
+              </Text>
 
               <TouchableOpacity
                 style={[

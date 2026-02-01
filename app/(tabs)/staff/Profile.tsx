@@ -20,14 +20,15 @@ import {
     TouchableWithoutFeedback,
     View,
 } from "react-native";
+import Footer from "../../../components/common/Footer";
+import Header from "../../../components/common/Header";
 import {
     StaffProfileData,
     UsersMeResponse,
 } from "../../../components/profile/StaffData";
-import Footer from "../../../components/common/Footer";
-import Header from "../../../components/common/Header";
 import StaffProfile from "../../../components/profile/StaffProfile";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { modalStyles, styles } from "../../../styles/tabs/staff/Profile";
 
 /** 생일 문자열 → YYYY.MM.DD (YYMMDD 6자리, YYYYMMDD 8자리, 또는 그대로 반환) */
@@ -92,7 +93,7 @@ export default function StaffProfileScreen() {
   const [isAgreed, setIsAgreed] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
-  const [notificationCount] = useState(0);
+  const notificationCount = useNotificationCount("staff");
 
   // --- users/me API 호출 (알바생 이름, 이메일, 생일 등) ---
   React.useEffect(() => {

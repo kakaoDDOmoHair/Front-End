@@ -71,11 +71,14 @@ export async function fetchModifications(params: {
   status?: ModificationStatus;
   requesterId?: number;
 }, headers?: Record<string, string>) {
-  const { data } = await api.get<ModificationRequestItem[]>(
+  const res = await api.get<ModificationRequestItem[] | { list?: ModificationRequestItem[]; data?: ModificationRequestItem[] }>(
     "/api/v1/modifications",
     { params, ...(mergeHeaders(headers) ? { headers: mergeHeaders(headers) } : {}) }
   );
-  return Array.isArray(data) ? data : [];
+  const data = res.data;
+  if (Array.isArray(data)) return data;
+  const list = (data as any)?.list ?? (data as any)?.data;
+  return Array.isArray(list) ? list : [];
 }
 
 // --- 3. 정정 요청 상세 조회 (GET /api/v1/modifications/{requestId}) ---

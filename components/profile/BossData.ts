@@ -5,6 +5,14 @@ export interface BossProfileData {
   email: string;
 }
 
+/** /api/v1/users/me API 응답 타입 */
+export interface BossUsersMeResponse {
+  name?: string;
+  email?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
 // 2. 사업장 상세 정보 인터페이스
 export interface BusinessData {
   businessNumber: string;

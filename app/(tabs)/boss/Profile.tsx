@@ -21,14 +21,13 @@ import {
   View,
 } from "react-native";
 
-import {
-  BossProfileData,
-  BossUsersMeResponse,
-} from "../../../components/profile/BossData";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
+import type { BossUsersMeResponse } from "../../../components/profile/BossData";
+import { BossProfileData } from "../../../components/profile/BossData";
 import BossProfile from "../../../components/profile/BossProfile";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { modalStyles, styles } from "../../../styles/tabs/boss/Profile";
 
 /** users/me 응답을 BossProfileData로 변환 */
@@ -50,7 +49,7 @@ export default function ProfileScreen() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  const [notificationCount] = useState(0);
+  const notificationCount = useNotificationCount("boss");
   // --- 유저 정보 상태 ---
   const [username, setUsername] = useState("");
 

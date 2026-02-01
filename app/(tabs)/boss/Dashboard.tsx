@@ -22,10 +22,8 @@ import { useNotificationCount } from "../../../hooks/useNotificationCount";
 
 // 👇 대시보드 내부 컴포넌트 & 데이터
 import {
-
-  ScheduleCard,
-  WorkerCard,
-
+    ScheduleCard,
+    WorkerCard,
 } from "../../../components/dashboard/BossDashboard";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Dashboard";
@@ -210,15 +208,18 @@ export default function DashboardScreen() {
         params: { storeId },
         headers,
       });
-      const payload = response.data?.data || response.data;
-      console.log("📋 [attendances/today]", {
-        storeId,
-        hasToken: !!Object.keys(headers).length,
-        raw: payload,
-      });
-      const list =
-        payload?.list || payload?.attendances || payload?.items || [];
-      const normalized = Array.isArray(list) ? list : list ? [list] : [];
+      const payload = response.data?.data ?? response.data;
+      if (__DEV__) {
+        console.log("📋 [attendances/today]", {
+          storeId,
+          hasToken: !!Object.keys(headers).length,
+          raw: payload,
+        });
+      }
+      const list = Array.isArray(payload)
+        ? payload
+        : payload?.list ?? payload?.attendances ?? payload?.items ?? [];
+      const normalized = Array.isArray(list) ? list : [];
       const formatTime = (value: any) => {
         if (!value) return null;
         if (typeof value === "number") {
@@ -368,6 +369,7 @@ export default function DashboardScreen() {
 
         workingOnly = workingOnly.map((item) => {
           if (!item.name || item.name === "직원") return item;
+          if (item.status === "LATE") return item;
           const ranges = scheduleByName.get(item.name) ?? [];
           if (ranges.length === 0) return item;
           const earliest = ranges.slice().sort((a, b) => a.start - b.start)[0];

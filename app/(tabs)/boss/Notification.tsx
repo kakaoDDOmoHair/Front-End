@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,16 +25,35 @@ import { styles } from "../../../styles/tabs/boss/Notification";
 
 const BOSS_READ_IDS_KEY = "boss_read_notification_ids";
 
+/**
+ * 백엔드가 UTC로 보내는데 'Z' 없이 오면(예: 2025-01-31T01:29:00) JS가 로컬로 해석해 9시간 전으로 나옴.
+ * ISO 형식이면서 타임존 없으면 UTC로 해석하도록 보정.
+ */
+function parseDateForRelative(timeStr?: string): Date | null {
+  if (!timeStr || typeof timeStr !== "string") return null;
+  const s = timeStr.trim();
+  // ISO 형식(날짜+T+시간)인데 끝에 Z 또는 +09:00 없으면 → UTC로 간주하고 Z 붙임
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !/[Zz]$/.test(s) && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+    const noMs = s.replace(/\.\d{3}$/, "");
+    const withZ = `${noMs}Z`;
+    const d = new Date(withZ);
+    return Number.isNaN(d.getTime()) ? new Date(timeStr) : d;
+  }
+  const d = new Date(timeStr);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /** createdAt → "2시간 전" 스타일 */
 function formatRelativeTime(createdAt?: string): string {
-  if (!createdAt) return "";
-  const date = new Date(createdAt);
+  const date = parseDateForRelative(createdAt);
+  if (!date) return createdAt ? "오늘" : "";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffM = Math.floor(diffMs / 60000);
   const diffH = Math.floor(diffMs / 3600000);
   const diffD = Math.floor(diffMs / 86400000);
-  if (diffM < 1) return "방금 전";
+  if (diffMs < 0) return "방금 전";
+  if (diffM < 1) return "1분 전";
   if (diffM < 60) return `${diffM}분 전`;
   if (diffH < 24) return `${diffH}시간 전`;
   if (diffD === 1) return "하루 전";
@@ -44,8 +63,8 @@ function formatRelativeTime(createdAt?: string): string {
 
 /** 날짜 기준 오늘/어제/이번 주 */
 function getCategory(createdAt?: string): "오늘" | "어제" | "이번 주" {
-  if (!createdAt) return "이번 주";
-  const date = new Date(createdAt);
+  const date = parseDateForRelative(createdAt);
+  if (!date) return "이번 주";
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const then = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -53,6 +72,21 @@ function getCategory(createdAt?: string): "오늘" | "어제" | "이번 주" {
   if (diffD === 0) return "오늘";
   if (diffD === 1) return "어제";
   return "이번 주";
+}
+
+/** 출퇴근 시간 표시: ISO(UTC)면 로컬 HH:mm으로, "HH:mm" 형태면 그대로 */
+function formatTimeForDisplay(timeStr?: string): string {
+  if (!timeStr || typeof timeStr !== "string") return "";
+  const s = String(timeStr).trim();
+  if (s.includes("T")) {
+    const date = parseDateForRelative(s);
+    if (date) {
+      const h = date.getHours();
+      const m = date.getMinutes();
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+  }
+  return s.slice(0, 5);
 }
 
 /** 정정 요청 API 항목 → BossNotificationItemData (수정/삭제 구분) */
@@ -68,6 +102,7 @@ function mapToModificationItem(item: ModificationRequestItem): BossNotificationI
   const timeSource = (item.status === "APPROVED" || item.status === "REJECTED") && item.updatedAt
     ? item.updatedAt
     : item.createdAt;
+  const sortAt = timeSource || new Date().toISOString();
   return {
     id: item.requestId,
     icon: "⏰",
@@ -77,6 +112,7 @@ function mapToModificationItem(item: ModificationRequestItem): BossNotificationI
     category: getCategory(timeSource),
     isRead: false,
     hasActions: true,
+    sortAt,
   };
 }
 
@@ -92,6 +128,7 @@ function mapSalaryRequestToItem(worker: { userId: number; name?: string }): Boss
     category: "오늘",
     isRead: false,
     hasActions: false,
+    sortAt: new Date().toISOString(),
   };
 }
 
@@ -108,7 +145,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
     const hasClockedIn = status === "ON" || status === "LATE";
     const hasClockedOut = status === "OFF" || status === "ABSENT" || !!endTime;
     if (startTime) {
-      const timePart = startTime.includes("T") ? startTime.slice(11, 16) : String(startTime).slice(0, 5);
+      const timePart = formatTimeForDisplay(startTime);
       const isLate = status === "LATE";
       items.push({
         id: idBase++,
@@ -121,6 +158,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         category: getCategory(startTime),
         isRead: false,
         hasActions: false,
+        sortAt: startTime || new Date().toISOString(),
       });
     } else if (hasClockedIn) {
       items.push({
@@ -134,10 +172,11 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         category: "오늘",
         isRead: false,
         hasActions: false,
+        sortAt: new Date().toISOString(),
       });
     }
     if (endTime) {
-      const endTimePart = endTime.includes("T") ? endTime.slice(11, 16) : String(endTime).slice(0, 5);
+      const endTimePart = formatTimeForDisplay(endTime);
       const hoursText = totalHours != null ? ` 총 ${Math.round(totalHours * 10) / 10}시간 근무.` : ".";
       items.push({
         id: idBase++,
@@ -148,6 +187,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         category: getCategory(endTime),
         isRead: false,
         hasActions: false,
+        sortAt: endTime || new Date().toISOString(),
       });
     } else if (hasClockedOut && !startTime) {
       items.push({
@@ -159,6 +199,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         category: "오늘",
         isRead: false,
         hasActions: false,
+        sortAt: new Date().toISOString(),
       });
     }
   }
@@ -178,7 +219,7 @@ const DAY_ORDER = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
 /** 주간 스케줄 → "OO님이 근무를 등록했습니다" 알림 (id: 5xxxxxx) */
 function mapSchedulesToItems(
-  list: Array<Record<string, unknown> & { scheduleId?: number; workDate?: string; date?: string; day?: string; time?: string; startTime?: string; endTime?: string; createdAt?: string; workers?: Array<{ name?: string }> }>,
+  list: Array<Record<string, unknown> & { scheduleId?: number; workDate?: string; date?: string; day?: string; time?: string; startTime?: string; endTime?: string; createdAt?: string; created_at?: string; registeredAt?: string; updatedAt?: string; workers?: Array<{ name?: string }> }>,
   startDate: string
 ): BossNotificationItemData[] {
   const items: BossNotificationItemData[] = [];
@@ -196,7 +237,7 @@ function mapSchedulesToItems(
         workDate = start.toISOString().split("T")[0];
       }
     }
-    const createdAt = s.createdAt as string | undefined;
+    const createdAt = (s.createdAt ?? s.created_at ?? s.registeredAt ?? s.updatedAt) as string | undefined;
     const timeStr = s.time ?? (s.startTime && s.endTime ? `${s.startTime}~${s.endTime}` : "");
     const workerName = (s.workers && s.workers[0]?.name) ? s.workers[0].name : "알바생";
     const dateLabel = workDate ? `${String(workDate).slice(5, 7)}월 ${String(workDate).slice(8, 10)}일` : "";
@@ -207,9 +248,9 @@ function mapSchedulesToItems(
     if (seen.has(key)) continue;
     seen.add(key);
     if (createdAt) {
-      const created = new Date(createdAt);
+      const parsed = parseDateForRelative(createdAt);
       const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-      if (created >= threeDaysAgo) {
+      if (parsed && parsed >= threeDaysAgo) {
         items.push({
           id: idBase++,
           icon: "📅",
@@ -219,18 +260,34 @@ function mapSchedulesToItems(
           category: getCategory(createdAt),
           isRead: false,
           hasActions: false,
+          sortAt: createdAt,
+        });
+      } else if (workDate && workDate >= todayStr) {
+        const fallbackSortAt = `${workDate}T00:00:00`;
+        items.push({
+          id: idBase++,
+          icon: "📅",
+          name: "스케줄",
+          message: msg,
+          time: formatRelativeTime(fallbackSortAt),
+          category: getCategory(workDate),
+          isRead: false,
+          hasActions: false,
+          sortAt: fallbackSortAt,
         });
       }
     } else if (workDate && workDate >= todayStr) {
+      const fallbackSortAt = `${workDate}T00:00:00`;
       items.push({
         id: idBase++,
         icon: "📅",
         name: "스케줄",
         message: msg,
-        time: workDate === todayStr ? "오늘" : formatRelativeTime(workDate),
+        time: formatRelativeTime(fallbackSortAt),
         category: getCategory(workDate),
         isRead: false,
         hasActions: false,
+        sortAt: fallbackSortAt,
       });
     }
   }
@@ -298,7 +355,9 @@ export default function BossNotificationScreen() {
         mapSalaryRequestToItem(w)
       );
       const attPayload = attendancesRes.data?.data ?? attendancesRes.data;
-      const attList = attPayload?.list ?? attPayload?.attendances ?? attPayload?.items ?? [];
+      const attList = Array.isArray(attPayload)
+        ? attPayload
+        : (attPayload?.list ?? attPayload?.attendances ?? attPayload?.items ?? []);
       const attendanceItems = mapAttendancesToItems(Array.isArray(attList) ? attList : []);
 
       const schedPayload = schedulesRes.data?.data ?? schedulesRes.data;
@@ -346,8 +405,11 @@ export default function BossNotificationScreen() {
         });
       }
       const combined = [...modificationItems, ...salaryItems, ...attendanceItems, ...scheduleItems, ...paydayItems];
-      const order: Record<string, number> = { 오늘: 0, 어제: 1, "이번 주": 2 };
-      combined.sort((a, b) => (order[a.category] ?? 2) - (order[b.category] ?? 2));
+      combined.sort((a, b) => {
+        const ta = a.sortAt ? new Date(a.sortAt).getTime() : 0;
+        const tb = b.sortAt ? new Date(b.sortAt).getTime() : 0;
+        return tb - ta;
+      });
       try {
         const raw = await AsyncStorage.getItem(BOSS_READ_IDS_KEY);
         const readIds: number[] = raw ? JSON.parse(raw) : [];
@@ -463,40 +525,6 @@ export default function BossNotificationScreen() {
     ]);
   };
 
-  const todayNotifications = useMemo(
-    () => notifications.filter((n) => n.category === "오늘"),
-    [notifications]
-  );
-  const yesterdayNotifications = useMemo(
-    () => notifications.filter((n) => n.category === "어제"),
-    [notifications]
-  );
-  const thisWeekNotifications = useMemo(
-    () => notifications.filter((n) => n.category === "이번 주"),
-    [notifications]
-  );
-
-  const renderSection = (
-    title: string,
-    data: BossNotificationItemData[]
-  ) => {
-    if (data.length === 0) return null;
-    return (
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>{title}</Text>
-        {data.map((n) => (
-          <BossNotificationItem
-            key={n.id}
-            data={n}
-            onPress={() => handleNotificationPress(n.id)}
-            onApprove={n.hasActions ? handleApprove : undefined}
-            onReject={n.hasActions ? handleReject : undefined}
-          />
-        ))}
-      </View>
-    );
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -537,10 +565,19 @@ export default function BossNotificationScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {renderSection("오늘", todayNotifications)}
-        {renderSection("어제", yesterdayNotifications)}
-        {renderSection("이번 주", thisWeekNotifications)}
-        {notifications.length === 0 && (
+        {notifications.length > 0 ? (
+          <View style={styles.section}>
+            {notifications.map((n) => (
+              <BossNotificationItem
+                key={n.id}
+                data={n}
+                onPress={() => handleNotificationPress(n.id)}
+                onApprove={n.hasActions ? handleApprove : undefined}
+                onReject={n.hasActions ? handleReject : undefined}
+              />
+            ))}
+          </View>
+        ) : (
           <View style={{ padding: 24, alignItems: "center" }}>
             <Text style={{ fontSize: 15, color: "#666" }}>
               대기 중인 알림이 없습니다.

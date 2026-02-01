@@ -8,18 +8,18 @@ import MapView, { Marker } from "react-native-maps";
 import api from "../../../constants/api";
 
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Linking,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // 공통 컴포넌트 임포트 (매장 등록: 헤더만, 푸터 없음)
@@ -29,6 +29,7 @@ import { CustomInput } from "../../../components/common/CustomInput";
 import { FormSection } from "../../../components/common/FormSection";
 import Header from "../../../components/common/Header";
 import { SideButton } from "../../../components/common/SideButton";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/Registration";
 
 // --- 헬퍼 함수: 두 좌표 사이의 거리를 계산 (m 단위) ---
@@ -56,7 +57,7 @@ export default function StoreRegistrationScreen() {
 
   // 1. 상태 관리
   const [userId, setUserId] = useState<number | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const notificationCount = useNotificationCount("boss");
   const [businessNumber, setBusinessNumber] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [storeName, setStoreName] = useState("");
@@ -281,7 +282,7 @@ export default function StoreRegistrationScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <StatusBar barStyle="dark-content" />
-      <Header notificationCount={unreadCount} />
+      <Header notificationCount={notificationCount} />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}

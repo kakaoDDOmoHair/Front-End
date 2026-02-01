@@ -3,18 +3,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
+import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/BossInfo";
 
 // 📋 API 응답 데이터 타입 정의
@@ -66,7 +67,7 @@ const InfoSection = ({
 
 export default function BossInfoPage() {
   const router = useRouter();
-  const [notificationCount] = useState(0);
+  const notificationCount = useNotificationCount("boss");
 
   const [storeInfo, setStoreInfo] = useState<StoreDetail | null>(null);
   const [ownerName, setOwnerName] = useState("사장님");

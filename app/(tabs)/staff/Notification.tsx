@@ -1,15 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
-    ActivityIndicator,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import type { NotificationItemData } from "../../../components/notification/StaffData";
@@ -18,15 +18,29 @@ import api from "../../../constants/api";
 import { fetchModifications } from "../../../services/modificationApi";
 import { styles } from "../../../styles/tabs/staff/Notification";
 
+/** ISO 형식인데 타임존 없으면 UTC로 해석 (백엔드 UTC 무Z 응답 시 9시간 전 오류 방지) */
+function parseDateForRelative(timeStr?: string): Date | null {
+  if (!timeStr || typeof timeStr !== "string") return null;
+  const s = timeStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !/[Zz]$/.test(s) && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+    const noMs = s.replace(/\.\d{3}$/, "");
+    const d = new Date(`${noMs}Z`);
+    return Number.isNaN(d.getTime()) ? new Date(timeStr) : d;
+  }
+  const d = new Date(timeStr);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function formatRelativeTime(createdAt?: string): string {
-  if (!createdAt) return "";
-  const date = new Date(createdAt);
+  const date = parseDateForRelative(createdAt);
+  if (!date) return createdAt ? "오늘" : "";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffM = Math.floor(diffMs / 60000);
   const diffH = Math.floor(diffMs / 3600000);
   const diffD = Math.floor(diffMs / 86400000);
-  if (diffM < 1) return "방금 전";
+  if (diffMs < 0) return "방금 전";
+  if (diffM < 1) return "1분 전";
   if (diffM < 60) return `${diffM}분 전`;
   if (diffH < 24) return `${diffH}시간 전`;
   if (diffD === 1) return "하루 전";
@@ -35,8 +49,8 @@ function formatRelativeTime(createdAt?: string): string {
 }
 
 function getCategory(createdAt?: string): "오늘" | "어제" | "이번 주" {
-  if (!createdAt) return "이번 주";
-  const date = new Date(createdAt);
+  const date = parseDateForRelative(createdAt);
+  if (!date) return "이번 주";
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const then = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -44,6 +58,21 @@ function getCategory(createdAt?: string): "오늘" | "어제" | "이번 주" {
   if (diffD === 0) return "오늘";
   if (diffD === 1) return "어제";
   return "이번 주";
+}
+
+/** 출퇴근 시간 표시: ISO(UTC)면 로컬 HH:mm으로, "HH:mm" 형태면 그대로 */
+function formatTimeForDisplay(timeStr?: string): string {
+  if (!timeStr || typeof timeStr !== "string") return "";
+  const s = String(timeStr).trim();
+  if (s.includes("T")) {
+    const date = parseDateForRelative(s);
+    if (date) {
+      const h = date.getHours();
+      const m = date.getMinutes();
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+  }
+  return s.slice(0, 5);
 }
 
 const STAFF_READ_IDS_KEY = "staff_read_notification_ids";
@@ -97,8 +126,8 @@ export default function StaffNotificationScreen() {
       ]);
 
       for (const m of modList) {
-        // 승인된 시각(updatedAt)이 있으면 그걸로 표시 → 방금 승인된 건 '방금 전'으로 보이게
         const timeSource = m.updatedAt ?? m.createdAt;
+        const sortAt = timeSource || new Date().toISOString();
         items.push({
           id: idGen++,
           icon: "✅",
@@ -107,6 +136,7 @@ export default function StaffNotificationScreen() {
           time: formatRelativeTime(timeSource),
           category: getCategory(timeSource),
           isRead: false,
+          sortAt,
         });
       }
 
@@ -119,6 +149,7 @@ export default function StaffNotificationScreen() {
         const amount = s.amount ?? s.totalAmount ?? 0;
         const amountStr = typeof amount === "number" ? `${amount.toLocaleString()}원` : String(amount);
         const completedAt = s.completedAt ?? s.updatedAt;
+        const sortAt1 = completedAt || new Date().toISOString();
         items.push({
           id: idGen++,
           icon: "💰",
@@ -127,6 +158,7 @@ export default function StaffNotificationScreen() {
           time: formatRelativeTime(completedAt),
           category: getCategory(completedAt),
           isRead: false,
+          sortAt: sortAt1,
         });
         const payslipSentAt = s.payslipSentAt ?? s.payslipSentDate ?? (s.payslipSent ? completedAt : null);
         const payslipTime = payslipSentAt ?? completedAt;
@@ -138,6 +170,7 @@ export default function StaffNotificationScreen() {
           time: formatRelativeTime(payslipTime),
           category: getCategory(payslipTime),
           isRead: false,
+          sortAt: payslipTime || sortAt1,
         });
       }
 
@@ -148,7 +181,7 @@ export default function StaffNotificationScreen() {
         const endTime = a.endTime ?? a.checkOutTime;
         const totalHours = a.totalHours;
         if (startTime) {
-          const timePart = startTime.includes("T") ? startTime.slice(11, 16) : String(startTime).slice(0, 5);
+          const timePart = formatTimeForDisplay(startTime);
           const isLate = String(a?.status ?? "").toUpperCase() === "LATE";
           items.push({
             id: idGen++,
@@ -158,10 +191,11 @@ export default function StaffNotificationScreen() {
             time: formatRelativeTime(startTime),
             category: getCategory(startTime),
             isRead: false,
+            sortAt: startTime || new Date().toISOString(),
           });
         }
         if (endTime) {
-          const timePart = endTime.includes("T") ? endTime.slice(11, 16) : String(endTime).slice(0, 5);
+          const timePart = formatTimeForDisplay(endTime);
           const hoursText = totalHours != null ? ` 총 ${Math.round(totalHours * 10) / 10}시간 근무했습니다.` : "";
           items.push({
             id: idGen++,
@@ -171,26 +205,37 @@ export default function StaffNotificationScreen() {
             time: formatRelativeTime(endTime),
             category: getCategory(endTime),
             isRead: false,
+            sortAt: endTime || new Date().toISOString(),
           });
         }
       }
 
       const schedPayload = scheduleRes.data?.data ?? scheduleRes.data;
       const schedList = Array.isArray(schedPayload) ? schedPayload : schedPayload?.list ?? schedPayload?.items ?? [];
-      if (schedList.length > 0) {
+      for (const s of schedList) {
+        const workDate = (s?.workDate ?? s?.date) as string | undefined;
+        const createdAt = (s?.createdAt ?? s?.created_at ?? s?.registeredAt) as string | undefined;
+        const timeSource = createdAt ?? (workDate ? `${workDate}T12:00:00` : null);
+        const sortAt = timeSource ?? new Date().toISOString();
+        const timeLabel = timeSource ? formatRelativeTime(timeSource) : "오늘";
         items.push({
           id: idGen++,
           icon: "📅",
           name: "스케줄",
           message: "새로운 근무 스케줄이 등록되었습니다.",
-          time: "오늘",
-          category: "오늘",
+          time: timeLabel,
+          category: getCategory(sortAt),
           isRead: false,
+          sortAt,
         });
       }
 
-      const order: Record<string, number> = { 오늘: 0, 어제: 1, "이번 주": 2 };
-      items.sort((a, b) => (order[a.category] ?? 2) - (order[b.category] ?? 2));
+      // 최신순(위) → 오래된 순(아래) 시간순 정렬
+      items.sort((a, b) => {
+        const ta = a.sortAt ? new Date(a.sortAt).getTime() : 0;
+        const tb = b.sortAt ? new Date(b.sortAt).getTime() : 0;
+        return tb - ta;
+      });
       try {
         const raw = await AsyncStorage.getItem(STAFF_READ_IDS_KEY);
         const readIds: number[] = raw ? JSON.parse(raw) : [];
@@ -245,10 +290,6 @@ export default function StaffNotificationScreen() {
     })();
   };
 
-  const todayNotifications = useMemo(() => notifications.filter((n) => n.category === "오늘"), [notifications]);
-  const yesterdayNotifications = useMemo(() => notifications.filter((n) => n.category === "어제"), [notifications]);
-  const thisWeekNotifications = useMemo(() => notifications.filter((n) => n.category === "이번 주"), [notifications]);
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -289,31 +330,13 @@ export default function StaffNotificationScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {todayNotifications.length > 0 && (
+        {notifications.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>오늘</Text>
-            {todayNotifications.map((n) => (
+            {notifications.map((n) => (
               <NotificationItem key={n.id} data={n} onPress={() => handleNotificationPress(n.id)} />
             ))}
           </View>
-        )}
-        {yesterdayNotifications.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>어제</Text>
-            {yesterdayNotifications.map((n) => (
-              <NotificationItem key={n.id} data={n} onPress={() => handleNotificationPress(n.id)} />
-            ))}
-          </View>
-        )}
-        {thisWeekNotifications.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>이번 주</Text>
-            {thisWeekNotifications.map((n) => (
-              <NotificationItem key={n.id} data={n} onPress={() => handleNotificationPress(n.id)} />
-            ))}
-          </View>
-        )}
-        {notifications.length === 0 && (
+        ) : (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>🔔</Text>
             <Text style={styles.emptyText}>새로운 알림이 없습니다</Text>

@@ -176,7 +176,9 @@ const AttendancePage: React.FC = () => {
       const name =
         String(item.name ?? item.userName ?? item.workerName ?? "").trim() || "-";
       const uid = Number(item.userId ?? item.id ?? 0);
-      let status = String(item.status ?? item.attendanceStatus ?? "").toUpperCase();
+      let status = String(
+        item.status ?? item.attendanceStatus ?? item.attendance_status ?? item.state ?? "",
+      ).toUpperCase();
       if (status !== "ON" && status !== "OFF" && status !== "LATE" && status !== "ABSENT") {
         if (["PRESENT", "IN", "WORKING"].includes(status)) status = "ON";
         else if (["LATE"].includes(status)) status = "LATE";
@@ -203,15 +205,18 @@ const AttendancePage: React.FC = () => {
           data?.attendances ??
           data?.workers ??
           (Array.isArray(data) ? data : []);
-        const list = Array.isArray(rawList) ? rawList : [];
-        const mapped = mapTodayAttendancesToStatus(list);
+        const list = Array.isArray(rawList)
+          ? rawList
+          : rawList?.list ?? rawList?.attendances ?? rawList?.items ?? rawList?.data ?? [];
+        const normalized = Array.isArray(list) ? list : [];
+        const mapped = mapTodayAttendancesToStatus(normalized);
 
         // 백엔드 응답 확인용 콘솔 (개발 시에만)
         if (__DEV__) {
           console.log("[attendances/today] 응답 전체 response.data:", JSON.stringify(data, null, 2));
-          console.log("[attendances/today] 추출한 rawList 개수:", list.length);
-          if (list.length > 0) {
-            list.forEach((item: any, i: number) => {
+          console.log("[attendances/today] 추출한 list 개수:", normalized.length);
+          if (normalized.length > 0) {
+            normalized.forEach((item: any, i: number) => {
               console.log(
                 `[attendances/today] raw[${i}] name=${item.name ?? item.userName ?? item.workerName}, userId=${item.userId ?? item.id}, status(원본)=${item.status ?? item.attendanceStatus ?? "(없음)"}`,
               );
