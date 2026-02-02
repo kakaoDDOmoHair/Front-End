@@ -3,7 +3,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as Network from "expo-network";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +32,12 @@ import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/staff/Dashboard";
 
 // --- 헬퍼 함수: Haversine 공식을 이용한 두 좌표 사이의 거리 계산 (m 단위) ---
-const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+const getDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
   const R = 6371e3;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
@@ -80,7 +91,6 @@ interface EstimatedSalary {
   amount: number | null;
   totalHours: number | null;
 }
-
 
 const normalizeWifiSsid = (value: string) => {
   const raw = String(value || "").trim();
@@ -246,10 +256,12 @@ export default function DashboardScreen() {
   });
   const [currentWifiName, setCurrentWifiName] = useState<string | null>(null);
   const [currentWifiBssid, setCurrentWifiBssid] = useState<string | null>(null);
-  const [currentLocationName, setCurrentLocationName] = useState("위치 확인 중...");
-  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number } | null>(
-    null,
-  );
+  const [currentLocationName, setCurrentLocationName] =
+    useState("위치 확인 중...");
+  const [currentCoords, setCurrentCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
 
   const [todoText, setTodoText] = useState("");
   const [todoList, setTodoList] = useState<TodoItem[]>([]);
@@ -272,21 +284,26 @@ export default function DashboardScreen() {
   const [contractHourlyWage, setContractHourlyWage] = useState<number | null>(
     null,
   );
-  const [estimatedSalary, setEstimatedSalary] = useState<EstimatedSalary | null>(
-    null,
-  );
+  const [estimatedSalary, setEstimatedSalary] =
+    useState<EstimatedSalary | null>(null);
   const salaryRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const [localSessionStart, setLocalSessionStart] = useState<number | null>(null);
-  const [localSessionBaseHours, setLocalSessionBaseHours] = useState<number | null>(
+  const [localSessionStart, setLocalSessionStart] = useState<number | null>(
     null,
   );
-  const [localSessionBaseAmount, setLocalSessionBaseAmount] = useState<number | null>(
+  const [localSessionBaseHours, setLocalSessionBaseHours] = useState<
+    number | null
+  >(null);
+  const [localSessionBaseAmount, setLocalSessionBaseAmount] = useState<
+    number | null
+  >(null);
+  const [localPendingHours, setLocalPendingHours] = useState<number | null>(
     null,
   );
-  const [localPendingHours, setLocalPendingHours] = useState<number | null>(null);
-  const [localPendingAmount, setLocalPendingAmount] = useState<number | null>(null);
+  const [localPendingAmount, setLocalPendingAmount] = useState<number | null>(
+    null,
+  );
   const localAccumKeyRef = useRef<string | null>(null);
 
   const loadCachedStoreInfo = async () => {
@@ -329,8 +346,7 @@ export default function DashboardScreen() {
       const raw = await AsyncStorage.getItem(key);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      const hours =
-        parsed?.hours !== undefined ? Number(parsed.hours) : null;
+      const hours = parsed?.hours !== undefined ? Number(parsed.hours) : null;
       const amount =
         parsed?.amount !== undefined ? Number(parsed.amount) : null;
       if (Number.isFinite(hours)) setLocalPendingHours(hours);
@@ -340,7 +356,10 @@ export default function DashboardScreen() {
     }
   };
 
-  const saveLocalAccum = async (hours: number | null, amount: number | null) => {
+  const saveLocalAccum = async (
+    hours: number | null,
+    amount: number | null,
+  ) => {
     try {
       const key = localAccumKeyRef.current;
       if (!key) return;
@@ -423,9 +442,13 @@ export default function DashboardScreen() {
         continue;
       }
 
-      const status = item?.status ?? item?.attendanceStatus ?? item?.state ?? null;
+      const status =
+        item?.status ?? item?.attendanceStatus ?? item?.state ?? null;
       const itemAttendanceId = toValidAttendanceId(
-        item?.attendanceId ?? item?.attendance_id ?? item?.attendanceID ?? item?.id,
+        item?.attendanceId ??
+          item?.attendance_id ??
+          item?.attendanceID ??
+          item?.id,
       );
       const isActiveRecord =
         working &&
@@ -473,7 +496,7 @@ export default function DashboardScreen() {
       const payload = response.data?.data ?? response.data;
       const list = Array.isArray(payload)
         ? payload
-        : payload?.list ?? payload?.attendances ?? payload?.items ?? [];
+        : (payload?.list ?? payload?.attendances ?? payload?.items ?? []);
       const normalized = Array.isArray(list) ? list : [];
       const myItems = normalized.filter(
         (item: any) =>
@@ -525,7 +548,10 @@ export default function DashboardScreen() {
       setWeeklySchedules(grouped);
     } catch (e) {
       setWeeklySchedules(
-        dayOrder.map((day) => ({ day: dayLabelMap[day] || day, schedules: [] })),
+        dayOrder.map((day) => ({
+          day: dayLabelMap[day] || day,
+          schedules: [],
+        })),
       );
     }
   };
@@ -541,12 +567,11 @@ export default function DashboardScreen() {
       const content = payload?.content || payload?.list || payload?.items || [];
       const list = Array.isArray(content) ? content : [];
       const nameKey = String(userName || "").trim();
-      const match = list.find(
-        (c: any) =>
-          c?.userId === uid ||
-          c?.workerId === uid ||
-          c?.worker_id === uid,
-      ) ??
+      const match =
+        list.find(
+          (c: any) =>
+            c?.userId === uid || c?.workerId === uid || c?.worker_id === uid,
+        ) ??
         (nameKey
           ? list.find(
               (c: any) =>
@@ -638,7 +663,8 @@ export default function DashboardScreen() {
       const totalHours =
         payload?.totalHours !== undefined ? Number(payload.totalHours) : null;
       setEstimatedSalary({
-        period: payload?.period || `${year}.${String(month).padStart(2, "0")}.01~`,
+        period:
+          payload?.period || `${year}.${String(month).padStart(2, "0")}.01~`,
         amount: Number.isFinite(amount as number) ? amount : null,
         totalHours: Number.isFinite(totalHours as number) ? totalHours : null,
       });
@@ -646,7 +672,6 @@ export default function DashboardScreen() {
       setEstimatedSalary(null);
     }
   };
-
 
   const refreshSalaryViews = async (storeId: number, uid: number) => {
     const runRefresh = async () => {
@@ -746,7 +771,9 @@ export default function DashboardScreen() {
         }))
         .filter((x: any) => x.attendanceId != null);
 
-      const on = candidates.find((x: any) => (x.status === "ON" || x.status === "LATE") && !x.endTime);
+      const on = candidates.find(
+        (x: any) => (x.status === "ON" || x.status === "LATE") && !x.endTime,
+      );
 
       if (on?.attendanceId) {
         const idNum = toValidAttendanceId(on.attendanceId);
@@ -782,7 +809,9 @@ export default function DashboardScreen() {
         return;
       }
 
-      const response = await api.get("/api/v1/users/me", { params: { username } });
+      const response = await api.get("/api/v1/users/me", {
+        params: { username },
+      });
       const data = response.data?.data || response.data;
 
       const resolvedUserId = data?.userId || storedUserId;
@@ -803,7 +832,8 @@ export default function DashboardScreen() {
 
       // 매장 정보
       const storePayload = data?.store || data?.storeInfo || data?.store_info;
-      const normalized = normalizeStoreInfo(storePayload) || normalizeStoreInfo(data);
+      const normalized =
+        normalizeStoreInfo(storePayload) || normalizeStoreInfo(data);
       if (normalized) setBossStoreInfo(normalized);
       else {
         const cachedInfo = await loadCachedStoreInfo();
@@ -854,7 +884,10 @@ export default function DashboardScreen() {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        setCurrentCoords({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+        setCurrentCoords({
+          lat: loc.coords.latitude,
+          lon: loc.coords.longitude,
+        });
 
         const addr = await Location.reverseGeocodeAsync(loc.coords);
         if (addr.length > 0) {
@@ -919,14 +952,14 @@ export default function DashboardScreen() {
     (estimatedSalary?.totalHours ?? 0) > 0 ||
     (estimatedSalary?.amount ?? 0) > 0;
   const displayTotalHours = estimatedHasValue
-    ? estimatedSalary?.totalHours ?? null
-    : monthlySummary?.totalHours ?? null;
+    ? (estimatedSalary?.totalHours ?? null)
+    : (monthlySummary?.totalHours ?? null);
   const displayAmount = estimatedHasValue
-    ? estimatedSalary?.amount ?? null
-    : monthlySummary?.amount ??
+    ? (estimatedSalary?.amount ?? null)
+    : (monthlySummary?.amount ??
       (displayHourlyWage != null && displayTotalHours != null
         ? Math.floor(displayTotalHours * displayHourlyWage)
-        : null);
+        : null));
   const nowTimestamp = Date.now();
   const elapsedMinutes =
     localSessionStart != null
@@ -936,16 +969,13 @@ export default function DashboardScreen() {
   const perMinuteWage = Number.isFinite(appliedHourlyWage)
     ? appliedHourlyWage / 60
     : null;
-  const optimisticBaseHours =
-    localSessionBaseHours ?? displayTotalHours ?? 0;
+  const optimisticBaseHours = localSessionBaseHours ?? displayTotalHours ?? 0;
   const optimisticWorkingHours =
     isWorking && localSessionStart != null
       ? optimisticBaseHours + elapsedHours
       : null;
   const optimisticWorkingAmount =
-    isWorking &&
-    localSessionStart != null &&
-    perMinuteWage != null
+    isWorking && localSessionStart != null && perMinuteWage != null
       ? Math.floor(
           (localSessionBaseAmount ?? 0) + elapsedMinutes * perMinuteWage,
         )
@@ -956,15 +986,14 @@ export default function DashboardScreen() {
       ? Math.max(localPendingHours, displayTotalHours ?? 0)
       : displayTotalHours);
   const fallbackAmountFromHours =
-    finalDisplayHours != null &&
-    Number.isFinite(appliedHourlyWage)
+    finalDisplayHours != null && Number.isFinite(appliedHourlyWage)
       ? Math.floor(finalDisplayHours * appliedHourlyWage)
       : null;
   const finalDisplayAmount =
     optimisticWorkingAmount ??
     (localPendingAmount != null
       ? Math.max(localPendingAmount, displayAmount ?? 0)
-      : displayAmount ?? fallbackAmountFromHours);
+      : (displayAmount ?? fallbackAmountFromHours));
 
   useEffect(() => {
     saveLocalAccum(localPendingHours, localPendingAmount);
@@ -1047,7 +1076,9 @@ export default function DashboardScreen() {
 
       const netState = await Network.getNetworkStateAsync();
       const isWifi = netState.type === Network.NetworkStateType.WIFI;
-      const wifiInfo = isWifi ? await safeGetWifiInfo() : { ssid: null, bssid: null };
+      const wifiInfo = isWifi
+        ? await safeGetWifiInfo()
+        : { ssid: null, bssid: null };
       const ssid = wifiInfo.ssid;
       const bssid = wifiInfo.bssid;
 
@@ -1065,7 +1096,7 @@ export default function DashboardScreen() {
         const effectiveDistance =
           distance !== null && swappedDistance !== null
             ? Math.min(distance, swappedDistance)
-            : distance ?? swappedDistance;
+            : (distance ?? swappedDistance);
 
         const normalizedCurrentSsid = normalizeSsidForCompare(ssid);
         const normalizedStoreSsid = normalizeSsidForCompare(storeInfo.wifiSsid);
@@ -1095,7 +1126,10 @@ export default function DashboardScreen() {
             roundCoord(storeInfo.lon, ROUND_COMPARE_DECIMALS);
 
         if (
-          (!shouldUseWifiOnly && !isWifiMatched && !isLocationMatched && !isRoundedLocationMatched) ||
+          (!shouldUseWifiOnly &&
+            !isWifiMatched &&
+            !isLocationMatched &&
+            !isRoundedLocationMatched) ||
           (shouldUseWifiOnly && !isWifiMatched)
         ) {
           setIsLoading(false);
@@ -1126,13 +1160,24 @@ export default function DashboardScreen() {
 
         const newId = extractAttendanceIdFromResponse(response?.data);
         // 백엔드: 지각 시 status "LATE", 정상 시 "ON" 반환 (한국 시간 기준 판단)
-        const resStatus = (response?.data?.status ?? response?.data?.data?.status ?? "ON") as string;
-        const normalizedStatus = String(resStatus).toUpperCase() === "LATE" ? "LATE" : "ON";
+        const resStatus = (response?.data?.status ??
+          response?.data?.data?.status ??
+          "ON") as string;
+        const normalizedStatus =
+          String(resStatus).toUpperCase() === "LATE" ? "LATE" : "ON";
         setTodayStatus(normalizedStatus);
 
         if (__DEV__) {
-          console.log("[clock-in] 응답 전체 response.data:", JSON.stringify(response?.data, null, 2));
-          console.log("[clock-in] status(원본):", resStatus, "→ 화면 표시:", normalizedStatus === "LATE" ? "지각(근무중)" : "정상출근");
+          console.log(
+            "[clock-in] 응답 전체 response.data:",
+            JSON.stringify(response?.data, null, 2),
+          );
+          console.log(
+            "[clock-in] status(원본):",
+            resStatus,
+            "→ 화면 표시:",
+            normalizedStatus === "LATE" ? "지각(근무중)" : "정상출근",
+          );
         }
 
         if (newId) {
@@ -1140,8 +1185,14 @@ export default function DashboardScreen() {
           setAttendanceId(idNum);
           setIsWorking(true);
           await AsyncStorage.setItem("attendanceId", String(idNum));
-          const baseHours = Math.max(displayTotalHours ?? 0, localPendingHours ?? 0);
-          const baseAmount = Math.max(displayAmount ?? 0, localPendingAmount ?? 0);
+          const baseHours = Math.max(
+            displayTotalHours ?? 0,
+            localPendingHours ?? 0,
+          );
+          const baseAmount = Math.max(
+            displayAmount ?? 0,
+            localPendingAmount ?? 0,
+          );
           setLocalSessionStart(Date.now());
           setLocalSessionBaseHours(baseHours);
           setLocalSessionBaseAmount(baseAmount);
@@ -1149,7 +1200,10 @@ export default function DashboardScreen() {
           setLocalPendingAmount(baseAmount);
           Alert.alert("출근 완료", "오늘도 즐거운 근무 되세요!");
         } else {
-          Alert.alert("알림", "출근은 처리됐지만 attendanceId를 받지 못했습니다.");
+          Alert.alert(
+            "알림",
+            "출근은 처리됐지만 attendanceId를 받지 못했습니다.",
+          );
         }
         if (userId) {
           if (currentStoreId) {
@@ -1216,7 +1270,9 @@ export default function DashboardScreen() {
           if (Number.isFinite(appliedHourlyWage)) {
             const perMinute = appliedHourlyWage / 60;
             setLocalPendingAmount(
-              Math.floor((localSessionBaseAmount ?? 0) + workedMinutes * perMinute),
+              Math.floor(
+                (localSessionBaseAmount ?? 0) + workedMinutes * perMinute,
+              ),
             );
           } else if (localSessionBaseAmount != null) {
             setLocalPendingAmount(localSessionBaseAmount);
@@ -1242,14 +1298,20 @@ export default function DashboardScreen() {
       const serverMessage = error?.response?.data?.message || "";
 
       // 이미 출근이면: 서버에서 attendanceId를 monthly로 찾아 동기화
-      if (error?.response?.status === 500 && serverMessage.includes("이미 출근")) {
+      if (
+        error?.response?.status === 500 &&
+        serverMessage.includes("이미 출근")
+      ) {
         await syncWorkingFromServerByMonthly(userId!);
         setIsWorking(true);
         Alert.alert("안내", "이미 출근 상태입니다. 상태를 동기화했습니다.");
         return;
       }
 
-      if (error?.response?.status === 500 && serverMessage.includes("이미 퇴근")) {
+      if (
+        error?.response?.status === 500 &&
+        serverMessage.includes("이미 퇴근")
+      ) {
         setIsWorking(false);
         setAttendanceId(null);
         await AsyncStorage.removeItem("attendanceId");
@@ -1257,7 +1319,10 @@ export default function DashboardScreen() {
         return;
       }
 
-      Alert.alert("알림", serverMessage || "출퇴근 처리 중 오류가 발생했습니다.");
+      Alert.alert(
+        "알림",
+        serverMessage || "출퇴근 처리 중 오류가 발생했습니다.",
+      );
     } finally {
       setIsLoading(false);
       attendanceRequestRef.current = false;
@@ -1270,22 +1335,39 @@ export default function DashboardScreen() {
     const hasStoreInfo = hasWifiInfo || hasLocationInfo;
 
     const wifiMatch = hasWifiInfo
-      ? normalizeSsidForCompare(currentWifiName) === normalizeSsidForCompare(bossStoreInfo.wifiSsid)
+      ? normalizeSsidForCompare(currentWifiName) ===
+        normalizeSsidForCompare(bossStoreInfo.wifiSsid)
       : false;
 
     if (!hasStoreInfo) return connectionStatus.gps;
 
     if (!currentCoords) return wifiMatch || false;
 
-    const distance = getDistance(currentCoords.lat, currentCoords.lon, bossStoreInfo.lat, bossStoreInfo.lon);
-    const swappedDistance = getDistance(currentCoords.lat, currentCoords.lon, bossStoreInfo.lon, bossStoreInfo.lat);
+    const distance = getDistance(
+      currentCoords.lat,
+      currentCoords.lon,
+      bossStoreInfo.lat,
+      bossStoreInfo.lon,
+    );
+    const swappedDistance = getDistance(
+      currentCoords.lat,
+      currentCoords.lon,
+      bossStoreInfo.lon,
+      bossStoreInfo.lat,
+    );
     const effectiveDistance = Math.min(distance, swappedDistance);
 
     const roundedMatch =
-      roundCoord(currentCoords.lat, ROUND_COMPARE_DECIMALS) === roundCoord(bossStoreInfo.lat, ROUND_COMPARE_DECIMALS) &&
-      roundCoord(currentCoords.lon, ROUND_COMPARE_DECIMALS) === roundCoord(bossStoreInfo.lon, ROUND_COMPARE_DECIMALS);
+      roundCoord(currentCoords.lat, ROUND_COMPARE_DECIMALS) ===
+        roundCoord(bossStoreInfo.lat, ROUND_COMPARE_DECIMALS) &&
+      roundCoord(currentCoords.lon, ROUND_COMPARE_DECIMALS) ===
+        roundCoord(bossStoreInfo.lon, ROUND_COMPARE_DECIMALS);
 
-    return wifiMatch || (hasLocationInfo && effectiveDistance <= RELAXED_DISTANCE_M) || roundedMatch;
+    return (
+      wifiMatch ||
+      (hasLocationInfo && effectiveDistance <= RELAXED_DISTANCE_M) ||
+      roundedMatch
+    );
   }, [currentWifiName, bossStoreInfo, currentCoords, connectionStatus.gps]);
 
   const addTodo = () => {
@@ -1308,7 +1390,10 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Header notificationCount={notificationCount} />
 
         {!currentStoreId ? (
@@ -1317,9 +1402,13 @@ export default function DashboardScreen() {
               <Ionicons name="storefront-outline" size={80} color="#C4C4C4" />
               <Text style={styles.emptyTitle}>소속된 매장이 없습니다</Text>
               <Text style={styles.emptyDesc}>
-                매장에 합류하여 실시간 출퇴근 기록과{"\n"}근무 일정을 확인해보세요!
+                매장에 합류하여 실시간 출퇴근 기록과{"\n"}근무 일정을
+                확인해보세요!
               </Text>
-              <TouchableOpacity style={styles.registerButton} onPress={() => router.push("/(tabs)/staff/Registration")}>
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={() => router.push("/(tabs)/staff/Registration")}
+              >
                 <Text style={styles.registerButtonText}>매장 찾으러 가기</Text>
                 <Ionicons name="search" size={20} color="#9747FF" />
               </TouchableOpacity>
@@ -1329,7 +1418,8 @@ export default function DashboardScreen() {
           <>
             <View style={styles.greetingContainer}>
               <Text style={styles.greetingText}>
-                반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
+                반갑습니다, <Text style={styles.greetingName}>{userName}</Text>{" "}
+                님!👋
               </Text>
             </View>
             <View style={styles.inviteRow}>
@@ -1359,9 +1449,7 @@ export default function DashboardScreen() {
               <Text style={styles.salaryMetaText}>
                 근무 시간: {formatWorkHours(finalDisplayHours)}
               </Text>
-
             </View>
-            
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>오늘도 화이팅! 💰</Text>
@@ -1379,7 +1467,9 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={[
                   styles.checkInButton,
-                  isInZone ? { backgroundColor: "#E0D5FF99" } : { backgroundColor: "#E0D5FF99" },
+                  isInZone
+                    ? { backgroundColor: "#E0D5FF99" }
+                    : { backgroundColor: "#E0D5FF99" },
                   isWorking && { backgroundColor: "#E0D5FF99" },
                 ]}
                 onPress={handleAttendance}
@@ -1388,7 +1478,9 @@ export default function DashboardScreen() {
                 {isLoading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.checkInButtonText}>{isWorking ? "퇴근하기" : "출근하기"}</Text>
+                  <Text style={styles.checkInButtonText}>
+                    {isWorking ? "퇴근하기" : "출근하기"}
+                  </Text>
                 )}
               </TouchableOpacity>
 
@@ -1396,14 +1488,24 @@ export default function DashboardScreen() {
                 <StatusIndicator
                   icon="wifi"
                   label={
-                    normalizeSsidForCompare(currentWifiName) === normalizeSsidForCompare(bossStoreInfo.wifiSsid)
+                    normalizeSsidForCompare(currentWifiName) ===
+                    normalizeSsidForCompare(bossStoreInfo.wifiSsid)
                       ? "매장 WiFi 연결됨"
                       : "WiFi 정보 불일치"
                   }
-                  isActive={normalizeSsidForCompare(currentWifiName) === normalizeSsidForCompare(bossStoreInfo.wifiSsid)}
+                  isActive={
+                    normalizeSsidForCompare(currentWifiName) ===
+                    normalizeSsidForCompare(bossStoreInfo.wifiSsid)
+                  }
                 />
-                <View style={{ width: 1, height: 12, backgroundColor: "#E0D5FF" }} />
-                <StatusIndicator icon="location" label={currentLocationName} isActive={connectionStatus.gps} />
+                <View
+                  style={{ width: 1, height: 12, backgroundColor: "#E0D5FF" }}
+                />
+                <StatusIndicator
+                  icon="location"
+                  label={currentLocationName}
+                  isActive={connectionStatus.gps}
+                />
               </View>
             </View>
 
@@ -1464,7 +1566,6 @@ export default function DashboardScreen() {
               </View>
             </View>
 
-        
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>근무 시간표</Text>
               <ScrollView
@@ -1496,7 +1597,9 @@ export default function DashboardScreen() {
             alignItems: "center",
           }}
         >
-          <Text style={{ color: "#CCC", fontSize: 12 }}>매장 연결 후 메뉴 이용이 가능합니다</Text>
+          <Text style={{ color: "#CCC", fontSize: 12 }}>
+            매장 연결 후 메뉴 이용이 가능합니다
+          </Text>
         </View>
       )}
     </SafeAreaView>
