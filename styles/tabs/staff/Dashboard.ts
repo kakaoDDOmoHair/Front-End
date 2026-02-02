@@ -12,8 +12,8 @@ export const styles = StyleSheet.create({
   inviteRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    marginBottom: 30,
     paddingHorizontal: 20,
-    marginBottom: 20,
     gap: 8,
   },
   inviteCodeBadge: {
@@ -32,7 +32,17 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 15,
   },
-  manualButtonText: { fontSize: 15, color: "#9747FF", fontWeight: "600" },
+  manualViewButton: {
+    backgroundColor: "#E0D5FF99",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+  },
+  manualButtonText: {
+    fontSize: 15,
+    color: "#9747FF",
+    fontWeight: "600",
+  },
   section: { marginBottom: 25, paddingHorizontal: 20 },
   sectionTitle: {
     fontSize: 25,
