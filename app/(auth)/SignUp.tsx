@@ -7,7 +7,9 @@ import {
   Alert,
   Image,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -94,79 +96,92 @@ export default function SignUpScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.innerContainer}>
-        <View style={styles.logoContainer}>
-          <Image
-            source={require("@/assets/images/logo.png")}
-            style={styles.logoImage}
-          />
-        </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.innerContainer}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={require("@/assets/images/logo.png")}
+              style={styles.logoImage}
+            />
+          </View>
 
-        <View style={styles.inputContainer}>
-          <CustomInput
-            placeholder="아이디"
-            value={username}
-            onChangeText={SetUsername}
-          />
-          <CustomInput placeholder="이름" value={name} onChangeText={setName} />
-          <CustomInput
-            placeholder="비밀번호"
-            value={password}
-            secureTextEntry
-            onChangeText={setPassword}
-          />
-          <CustomInput
-            placeholder="이메일"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-          />
-        </View>
+          <View style={styles.inputContainer}>
+            <CustomInput
+              placeholder="아이디"
+              value={username}
+              onChangeText={SetUsername}
+            />
+            <CustomInput
+              placeholder="이름"
+              value={name}
+              onChangeText={setName}
+            />
+            <CustomInput
+              placeholder="비밀번호"
+              value={password}
+              secureTextEntry
+              onChangeText={setPassword}
+            />
+            <CustomInput
+              placeholder="이메일"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+            />
+          </View>
 
-        <View style={styles.roleSelectionContainer}>
-          <TouchableOpacity
-            style={[
-              styles.roleButton,
-              role === "OWNER" && styles.selectedRoleButton,
-            ]}
-            onPress={() => setRole("OWNER")}
-          >
-            <Text
+          <View style={styles.roleSelectionContainer}>
+            <TouchableOpacity
               style={[
-                styles.roleButtonText,
-                role === "OWNER" && styles.selectedRoleButtonText,
+                styles.roleButton,
+                role === "OWNER" && styles.selectedRoleButton,
               ]}
+              onPress={() => setRole("OWNER")}
             >
-              사장님
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.roleButtonText,
+                  role === "OWNER" && styles.selectedRoleButtonText,
+                ]}
+              >
+                사장님
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.roleButton,
-              role === "WORKER" && styles.selectedRoleButton,
-            ]}
-            onPress={() => setRole("WORKER")}
-          >
-            <Text
+            <TouchableOpacity
               style={[
-                styles.roleButtonText,
-                role === "WORKER" && styles.selectedRoleButtonText,
+                styles.roleButton,
+                role === "WORKER" && styles.selectedRoleButton,
               ]}
+              onPress={() => setRole("WORKER")}
             >
-              아르바이트생
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <Text
+                style={[
+                  styles.roleButtonText,
+                  role === "WORKER" && styles.selectedRoleButtonText,
+                ]}
+              >
+                아르바이트생
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        <View style={styles.submitButtonContainer}>
-          <CustomButton
-            title={isLoading ? "처리 중..." : "가입하기"}
-            onPress={handleSignUp}
-          />
+          <View style={styles.submitButtonContainer}>
+            <CustomButton
+              title={isLoading ? "처리 중..." : "가입하기"}
+              onPress={handleSignUp}
+            />
+          </View>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
