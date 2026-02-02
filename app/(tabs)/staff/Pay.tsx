@@ -1,16 +1,17 @@
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
@@ -55,6 +56,50 @@ type SalaryRequestResponse = {
     weeklyAllowance: number;
     tax: number;
   };
+};
+
+const normalizeSalaryStatus = (raw?: unknown) => {
+  const status = String(raw ?? "").toUpperCase();
+  if (!status) return "";
+  if (status === "REQUESTED") return "REQUESTED";
+  const completedTokens = [
+    "COMPLETED",
+    "COMPLETE",
+    "DONE",
+    "PAID",
+    "PAYED",
+    "TRANSFER",
+    "FINISHED",
+    "CONFIRMED",
+    "SETTLED",
+    "SETTLEMENT",
+    "SUCCESS",
+  ];
+  const waitingTokens = ["WAIT", "ACK", "PENDING", "IN_PROGRESS", "PROCESS"];
+  const negativeTokens = ["NOT", "UN", "CANCEL", "FAILED", "ERROR"];
+  const hasCompletedToken = completedTokens.some((token) =>
+    status.includes(token),
+  );
+  const hasWaitingToken = waitingTokens.some((token) => status.includes(token));
+  const hasNegativeToken = negativeTokens.some((token) =>
+    status.includes(token),
+  );
+  if (hasCompletedToken && !hasNegativeToken) return "COMPLETED";
+  if (hasWaitingToken) return "WAITING";
+  return status;
+};
+
+const getStatusRank = (status?: string) => {
+  switch (status) {
+    case "COMPLETED":
+      return 3;
+    case "WAITING":
+      return 2;
+    case "REQUESTED":
+      return 1;
+    default:
+      return 0;
+  }
 };
 
 const WorkerPay: React.FC = () => {
@@ -161,12 +206,19 @@ const WorkerPay: React.FC = () => {
               typeof p.amount === "number"
                 ? p.amount.toLocaleString()
                 : String(p.amount ?? "0"),
-            status: p.status ?? "WAITING",
+            status:
+              normalizeSalaryStatus(
+                p.status ?? p.paymentStatus ?? p.salaryStatus,
+              ) || "WAITING",
             totalHours:
               p.totalHours != null && !Number.isNaN(Number(p.totalHours))
                 ? Number(p.totalHours)
                 : null,
           };
+        });
+        console.log("📋 급여 내역 매핑 결과", {
+          count: mapped.length,
+          statuses: mapped.map((m) => ({ month: m.month, status: m.status })),
         });
         setHistory(mapped);
       } else {
@@ -211,8 +263,15 @@ const WorkerPay: React.FC = () => {
           ? Number(rawHours)
           : undefined;
 
+      const rawStatus =
+        (data as any)?.status ??
+        (data as any)?.paymentStatus ??
+        (data as any)?.salaryStatus ??
+        "";
+      console.log("📋 현재 월 급여 raw status", rawStatus, data);
       setCurrentMonth({
         ...(data as CurrentMonthSalary),
+        status: normalizeSalaryStatus(rawStatus) || rawStatus || "ESTIMATED",
         totalHours,
       });
     } catch (e: any) {
@@ -227,6 +286,15 @@ const WorkerPay: React.FC = () => {
     loadMySalaryData();
     fetchCurrentMonthSalary();
   }, []);
+
+  useEffect(() => {
+    if (!isRequestedToday) return;
+    const interval = setInterval(() => {
+      loadMySalaryData();
+      fetchCurrentMonthSalary();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isRequestedToday]);
 
   useEffect(() => {
     const restore = async () => {
@@ -308,6 +376,54 @@ const WorkerPay: React.FC = () => {
       ]);
     }
   }, [lastRequestDate]);
+
+  const buildSummaryKey = (
+    userId: string,
+    year: string,
+    month: string,
+  ) => `salary_request_summary_${userId}_${year}-${month.padStart(2, "0")}`;
+
+  const openStoredSummary = async (year: string, month: string) => {
+    const currentUserIdStr = (await AsyncStorage.getItem("userId")) ?? "";
+    if (!currentUserIdStr) {
+      Alert.alert("알림", "사용자 정보를 찾을 수 없습니다.");
+      return;
+    }
+    const key = buildSummaryKey(currentUserIdStr, year, month);
+    const stored = await AsyncStorage.getItem(key);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as {
+          time?: string;
+          amount?: string;
+          workHours?: string;
+        };
+        setRequestSummary({
+          time: parsed.time ?? "",
+          amount: parsed.amount ?? "",
+          workHours: parsed.workHours ?? "—",
+        });
+        setIsRequestedToday(true);
+        return;
+      } catch (_) {
+        // fallback to legacy keys below
+      }
+    }
+
+    const time = await AsyncStorage.getItem("salary_request_time");
+    const amount = await AsyncStorage.getItem("salary_request_amount");
+    const workHours = await AsyncStorage.getItem("salary_request_work_hours");
+    if (time != null || amount != null || workHours != null) {
+      setRequestSummary({
+        time: time ?? "",
+        amount: amount ?? "",
+        workHours: workHours ?? "—",
+      });
+      setIsRequestedToday(true);
+      return;
+    }
+    Alert.alert("알림", "정산 요청 기록을 찾을 수 없습니다.");
+  };
 
   const handleRequestSalary = async (item: {
     id: number;
@@ -512,16 +628,59 @@ const WorkerPay: React.FC = () => {
     return base;
   }, [history, currentMonth]);
 
+  const requestedStatus = useMemo(() => {
+    const today = new Date();
+    const year = String(today.getFullYear());
+    const month = String(today.getMonth() + 1);
+    const match = history.find(
+      (h) => String(h.year) === year && String(h.month) === month,
+    );
+    const historyStatusRaw = match?.status ?? "";
+    const currentStatusRaw = currentMonth?.status ?? "";
+    const historyNormalized = normalizeSalaryStatus(historyStatusRaw);
+    const currentNormalized = normalizeSalaryStatus(currentStatusRaw);
+    const historyRank = getStatusRank(historyNormalized);
+    const currentRank = getStatusRank(currentNormalized);
+    const resolved =
+      historyRank >= currentRank ? historyStatusRaw : currentStatusRaw;
+    console.log("📋 요청 상태 계산", {
+      currentStatusRaw,
+      historyStatusRaw,
+      resolved,
+      normalized: normalizeSalaryStatus(resolved),
+      historyRank,
+      currentRank,
+    });
+    return (
+      normalizeSalaryStatus(resolved) ||
+      String(resolved ?? "").toUpperCase()
+    );
+  }, [currentMonth, history]);
+
+  const isRequested = requestedStatus === "REQUESTED";
+  const isConfirming = requestedStatus === "WAITING";
+  const isCompleted = requestedStatus === "COMPLETED";
+  const showConfirming = isRequested || isConfirming || isCompleted;
+
   return (
     <SafeAreaView style={styles.container}>
-      {!isRequestedToday ? (
+{!isRequestedToday ? (
         <Header notificationCount={notificationCount} />
       ) : (
-        <View style={styles.topNavigation}>
-          <TouchableOpacity onPress={() => setIsRequestedToday(false)}>
-            <Text style={styles.backArrow}>〈</Text>
+        /* 1번 수정 구간: 알림 센터 스타일과 동일하게 적용 */
+        <View style={styles.pageHeader}> 
+          <TouchableOpacity
+            onPress={() => setIsRequestedToday(false)} // 요청 화면 닫기 로직 유지
+            style={styles.backButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="chevron-back" size={28} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.topTitle}>급여 요청</Text>
+          
+          <Text style={styles.pageHeaderTitle}>급여 요청</Text>
+          
+          {/* 타이틀을 중앙에 배치하기 위해 우측에 투명한 Spacer를 둡니다 (선택 사항) */}
+          <View style={{ width: 28 }} /> 
         </View>
       )}
 
@@ -596,11 +755,23 @@ const WorkerPay: React.FC = () => {
                         </View>
                         <View style={styles.rowItemRight} collapsable={false}>
                           {statusUpper === "COMPLETED" ? (
-                            <View style={styles.doneBadge}>
+                            <TouchableOpacity
+                              style={styles.doneBadge}
+                              activeOpacity={0.7}
+                              hitSlop={{
+                                top: 12,
+                                bottom: 12,
+                                left: 12,
+                                right: 12,
+                              }}
+                              onPress={() =>
+                                openStoredSummary(item.year, item.month)
+                              }
+                            >
                               <Text style={styles.doneBadgeText}>
                                 정산 완료
                               </Text>
-                            </View>
+                            </TouchableOpacity>
                           ) : statusUpper === "REQUESTED" ? (
                             <TouchableOpacity
                               style={styles.doneBadge}
@@ -611,39 +782,9 @@ const WorkerPay: React.FC = () => {
                                 left: 12,
                                 right: 12,
                               }}
-                              onPress={async () => {
-                                const todayStr = new Date().toDateString();
-                                const stored = await AsyncStorage.getItem(
-                                  "salary_request_date",
-                                );
-                                const storedUserIdStr =
-                                  await AsyncStorage.getItem(
-                                    "salary_request_userId",
-                                  );
-                                const currentUserIdStr =
-                                  (await AsyncStorage.getItem("userId")) ?? "";
-                                const sameDay = stored === todayStr;
-                                const sameUser =
-                                  storedUserIdStr != null &&
-                                  storedUserIdStr === currentUserIdStr;
-                                if (sameDay && sameUser) {
-                                  const time = await AsyncStorage.getItem(
-                                    "salary_request_time",
-                                  );
-                                  const amount = await AsyncStorage.getItem(
-                                    "salary_request_amount",
-                                  );
-                                  const workHours = await AsyncStorage.getItem(
-                                    "salary_request_work_hours",
-                                  );
-                                  setRequestSummary({
-                                    time: time ?? "",
-                                    amount: amount ?? "",
-                                    workHours: workHours ?? "—",
-                                  });
-                                  setIsRequestedToday(true);
-                                }
-                              }}
+                              onPress={() =>
+                                openStoredSummary(item.year, item.month)
+                              }
                             >
                               <Text style={styles.doneBadgeText}>요청됨</Text>
                             </TouchableOpacity>
@@ -730,7 +871,12 @@ const WorkerPay: React.FC = () => {
                 <View style={styles.timelineItem}>
                   <View style={styles.timelineLeft}>
                     <View style={[styles.timelineDot, styles.dotActive]} />
-                    <View style={[styles.timelineLine, styles.lineActive]} />
+                    <View
+                      style={[
+                        styles.timelineLine,
+                        showConfirming && styles.lineActive,
+                      ]}
+                    />
                   </View>
                   <View style={styles.timelineRight}>
                     <Text style={styles.timelineTitleActive}>요청 완료</Text>
@@ -742,12 +888,36 @@ const WorkerPay: React.FC = () => {
 
                 <View style={styles.timelineItem}>
                   <View style={styles.timelineLeft}>
-                    <View style={styles.timelineDot} />
-                    <View style={styles.timelineLine} />
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        showConfirming && styles.dotActive,
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.timelineLine,
+                        isCompleted && styles.lineActive,
+                      ]}
+                    />
                   </View>
                   <View style={styles.timelineRight}>
-                    <Text style={styles.timelineTitle}>사장님 확인 중</Text>
-                    <Text style={styles.timelineDesc}>
+                    <Text
+                      style={
+                        showConfirming
+                          ? styles.timelineTitleActive
+                          : styles.timelineTitle
+                      }
+                    >
+                      사장님 확인 중
+                    </Text>
+                    <Text
+                      style={
+                        showConfirming
+                          ? styles.timelineDescActive
+                          : styles.timelineDesc
+                      }
+                    >
                       사장님이 요청 알림을 확인하고 있습니다.
                     </Text>
                   </View>
@@ -755,11 +925,30 @@ const WorkerPay: React.FC = () => {
 
                 <View style={styles.timelineItem}>
                   <View style={styles.timelineLeft}>
-                    <View style={styles.timelineDot} />
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        isCompleted && styles.dotActive,
+                      ]}
+                    />
                   </View>
                   <View style={styles.timelineRight}>
-                    <Text style={styles.timelineTitle}>정산 완료</Text>
-                    <Text style={styles.timelineDesc}>
+                    <Text
+                      style={
+                        isCompleted
+                          ? styles.timelineTitleActive
+                          : styles.timelineTitle
+                      }
+                    >
+                      정산 완료
+                    </Text>
+                    <Text
+                      style={
+                        isCompleted
+                          ? styles.timelineDescActive
+                          : styles.timelineDesc
+                      }
+                    >
                       입금이 완료되면 목록에서 확인 가능합니다.
                     </Text>
                   </View>
