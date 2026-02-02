@@ -1317,7 +1317,7 @@ export default function DashboardScreen() {
               <Ionicons name="storefront-outline" size={80} color="#C4C4C4" />
               <Text style={styles.emptyTitle}>소속된 매장이 없습니다</Text>
               <Text style={styles.emptyDesc}>
-                매장에 합류하여 실시간 출퇴근 기록과 근무 일정을 확인해보세요!
+                매장에 합류하여 실시간 출퇴근 기록과{"\n"}근무 일정을 확인해보세요!
               </Text>
               <TouchableOpacity style={styles.registerButton} onPress={() => router.push("/(tabs)/staff/Registration")}>
                 <Text style={styles.registerButtonText}>매장 찾으러 가기</Text>
