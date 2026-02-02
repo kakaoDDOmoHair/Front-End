@@ -1,8 +1,8 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
     Alert,
     Keyboard,
@@ -112,6 +112,21 @@ const WorkerSchedule: React.FC = () => {
     return `${y}-${m}-${day}`;
   };
 
+  /** ISO 또는 "HH:mm" → "HH:mm" (기록 시간 표시용). ISO면 로컬(한국 KST) 시각으로 변환 — UTC가 아닌 한국 시간으로 표시 */
+  const toHHmm = (val: string | null | undefined): string => {
+    if (val == null || val === "") return "00:00";
+    const s = String(val).trim();
+    const match = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) return `${String(parseInt(match[1], 10)).padStart(2, "0")}:${match[2]}`;
+    const date = new Date(s);
+    if (!Number.isNaN(date.getTime())) {
+      const h = date.getHours();
+      const m = date.getMinutes();
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+    return "00:00";
+  };
+
   const fetchMyScheduleData = async () => {
     try {
       setLoading(true);
@@ -152,13 +167,18 @@ const WorkerSchedule: React.FC = () => {
           const dateStr = normalizeDate(dateRaw) || String(dateRaw || "").slice(0, 10);
           const isPast = dateStr < today;
           const sid = item.scheduleId ?? item.id ?? item.schedule_id;
+          const timeStr = (item.time && String(item.time).trim()) ? String(item.time).trim() : "";
+          const timeParts = timeStr ? timeStr.split("~") : [];
+          const startDisplay = timeParts[0]?.trim() || toHHmm(item.startTime) || "00:00";
+          const endDisplay = timeParts[1]?.trim() || toHHmm(item.endTime) || "00:00";
+          const registeredTime = timeStr || `${startDisplay}~${endDisplay}`;
           return {
             id: sid ? `id-${sid}` : `idx-${index}-${dateStr}`,
             originalId: sid,
             date: dateStr,
-            startTime: item.startTime || "00:00",
-            endTime: item.endTime || "00:00",
-            registeredTime: `${item.startTime || "00:00"}~${item.endTime || "00:00"}`,
+            startTime: startDisplay,
+            endTime: endDisplay,
+            registeredTime,
             wifiTime: item.actualTime || "",
             isPlanned: !isPast,
             storeName: item.storeName || item.storeN || storedStoreName,
@@ -182,22 +202,28 @@ const WorkerSchedule: React.FC = () => {
           const slotDate = new Date(weekStart);
           slotDate.setDate(weekStart.getDate() + dayIndex);
           const dateStr = slotDate.toISOString().split("T")[0];
-          const timeParts = (item.time || "").split("~");
-          const startTime = item.startTime || timeParts[0]?.trim() || "00:00";
-          const endTime = item.endTime || timeParts[1]?.trim() || "00:00";
+          const timeStr = (item.time && String(item.time).trim()) ? String(item.time).trim() : "";
+          const timeParts = timeStr ? timeStr.split("~") : [];
+          const startTime = timeParts[0]?.trim() || toHHmm(item.startTime) || "00:00";
+          const endTime = timeParts[1]?.trim() || toHHmm(item.endTime) || "00:00";
+          const registeredTimeSlot = timeStr || `${startTime}~${endTime}`;
           const workers = item.workers ?? [];
           workers.forEach((w: any) => {
             if (uid != null && Number(w?.userId) !== Number(uid) && Number(w?.user_id) !== Number(uid)) return;
             const sid = w.scheduleId ?? w.schedule_id ?? w.id;
             if (sid == null) return;
             const isPast = dateStr < today;
+            const wTimeStr = (w.time && String(w.time).trim()) ? String(w.time).trim() : timeStr;
+            const wTimeParts = wTimeStr ? wTimeStr.split("~") : [];
+            const wStart = wTimeParts[0]?.trim() || toHHmm(w.startTime ?? item.startTime) || startTime;
+            const wEnd = wTimeParts[1]?.trim() || toHHmm(w.endTime ?? item.endTime) || endTime;
             mappedData.push({
               id: `id-${sid}`,
               originalId: sid,
               date: dateStr,
-              startTime,
-              endTime,
-              registeredTime: `${startTime}~${endTime}`,
+              startTime: wTimeStr ? wStart : startTime,
+              endTime: wTimeStr ? wEnd : endTime,
+              registeredTime: wTimeStr || registeredTimeSlot,
               wifiTime: "",
               isPlanned: !isPast,
               storeName: item.storeName || storedStoreName,
@@ -206,6 +232,91 @@ const WorkerSchedule: React.FC = () => {
             });
           });
         });
+      }
+
+      // 기록된 근무: 출퇴근(attendances/monthly) 병합 — 대시보드에서 출퇴근 찍은 날이 스케줄에 남도록
+      if (uid != null && Number.isFinite(uid)) {
+        try {
+          const now = new Date();
+          const months: { year: number; month: number }[] = [
+            { year: now.getFullYear(), month: now.getMonth() + 1 },
+          ];
+          const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          months.push({ year: prev.getFullYear(), month: prev.getMonth() + 1 });
+          const dateToWork = new Map<string, WorkData>();
+          mappedData.forEach((d) => dateToWork.set(d.date, { ...d }));
+          for (const { year, month } of months) {
+            const res = await api.get("/api/v1/attendances/monthly", {
+              params: { userId: uid, year, month },
+              headers,
+            });
+            const payload = res.data?.data ?? res.data;
+            const list = Array.isArray(payload)
+              ? payload
+              : payload?.list ??
+                payload?.data ??
+                payload?.items ??
+                payload?.attendances ??
+                (payload && typeof payload === "object" && "list" in payload ? (payload as any).list : null) ??
+                [];
+            if (!Array.isArray(list)) continue;
+            for (const a of list) {
+              const dateRaw =
+                a.workDate ?? a.date ?? a.work_date ?? a.attendanceDate ?? a.attendance_date;
+              const startRaw = a.startTime ?? a.checkInTime ?? a.start_time ?? a.check_in_time;
+              const dateFromStart =
+                startRaw && typeof startRaw === "string" && startRaw.length >= 10
+                  ? startRaw.slice(0, 10)
+                  : "";
+              const dateStr = (() => {
+                if (dateRaw && typeof dateRaw === "string") {
+                  if (dateRaw.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(dateRaw))
+                    return dateRaw.slice(0, 10);
+                  const parsed = normalizeDate(dateRaw);
+                  if (parsed) return parsed;
+                }
+                if (dateFromStart && /^\d{4}-\d{2}-\d{2}/.test(dateFromStart)) return dateFromStart;
+                return "";
+              })();
+              if (!dateStr) continue;
+              if (!startRaw) continue;
+              const startTimeActual = toHHmm(startRaw);
+              const endTimeActual = toHHmm(
+                a.endTime ?? a.checkOutTime ?? a.end_time ?? a.check_out_time,
+              );
+              const aid = a.attendanceId ?? a.attendance_id ?? a.id ?? 0;
+              const apiTime = (a.time && String(a.time).trim()) ? String(a.time).trim() : "";
+              const recordedTimeStr = apiTime || (endTimeActual !== "00:00"
+                ? `${startTimeActual}~${endTimeActual}`
+                : `${startTimeActual}~`);
+              const existing = dateToWork.get(dateStr);
+              if (existing) {
+                dateToWork.set(dateStr, {
+                  ...existing,
+                  wifiTime: recordedTimeStr,
+                  isPlanned: false,
+                });
+              } else {
+                dateToWork.set(dateStr, {
+                  id: `att-${aid}-${dateStr}`,
+                  originalId: Number(aid) || 0,
+                  date: dateStr,
+                  startTime: startTimeActual,
+                  endTime: endTimeActual,
+                  registeredTime: "-",
+                  wifiTime: recordedTimeStr,
+                  isPlanned: false,
+                  storeName: storedStoreName ?? "",
+                  storeId: Number(userData?.storeId) || 0,
+                  breakTime: Number(a.breakTime ?? 0),
+                });
+              }
+            }
+          }
+          mappedData = Array.from(dateToWork.values());
+        } catch (e) {
+          console.warn("[기록된 근무 병합 실패]", e);
+        }
       }
 
       // 삭제 요청 수락 후 00:00~00:00으로 바뀐 항목은 목록·캘린더에서 아예 안 보이게 제외
@@ -228,9 +339,15 @@ const WorkerSchedule: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchMyScheduleData();
-  }, []);
+  // 마운트·포커스 시 로드 (대시보드에서 출퇴근 찍은 뒤 돌아오면 기록된 근무 반영)
+  useFocusEffect(
+    useCallback(() => {
+      fetchMyScheduleData();
+      // 방금 출퇴근 찍고 탭 전환 시 서버 반영 지연 대비 — 1.5초 후 한 번 더 조회
+      const t = setTimeout(() => fetchMyScheduleData(), 1500);
+      return () => clearTimeout(t);
+    }, []),
+  );
 
   /** "HH:mm"만 있을 때 야간(22:00~00:00 등) 처리: end ≤ start면 다음날 00:00으로 보고 분 반환 */
   const getScheduleWorkMinutes = (startTime: string, endTime: string): number => {
@@ -555,7 +672,7 @@ const WorkerSchedule: React.FC = () => {
               <Text style={styles.dateCell}>{item.date.split("-")[1]}월 {item.date.split("-")[2]}일</Text>
               <Text style={styles.timeCell}>{item.registeredTime}</Text>
               <Text style={[styles.timeCell, { color: getBadgeInfo(item.date)?.color }]}>
-                {item.isPlanned ? "-" : item.wifiTime || "-"}
+                {item.wifiTime || "-"}
               </Text>
             </View>
           ))}
@@ -603,7 +720,10 @@ const WorkerSchedule: React.FC = () => {
               <Text style={styles.storeName}>{selectedWorkDetail?.storeName || userStoreName}</Text>
               {selectedWorkDetail ? (
                 <>
-                  <Text style={styles.detailTimeText}>{selectedWorkDetail.startTime} ~ {selectedWorkDetail.endTime}</Text>
+                  <Text style={styles.detailTimeText}>등록: {selectedWorkDetail.registeredTime === "-" ? "-" : `${selectedWorkDetail.startTime} ~ ${selectedWorkDetail.endTime}`}</Text>
+                  {selectedWorkDetail.wifiTime ? (
+                    <Text style={styles.detailTimeText}>기록: {selectedWorkDetail.wifiTime}</Text>
+                  ) : null}
                   <Text style={styles.detailSubText}>(휴게시간: {selectedWorkDetail.breakTime}분)</Text>
                 </>
               ) : <Text style={styles.noWorkText}>근무 기록이 없습니다.</Text>}
