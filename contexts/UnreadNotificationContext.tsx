@@ -11,6 +11,8 @@ type UnreadState = {
   setBossUnread: SetUnread;
   refetchTrigger: number;
   triggerRefetch: () => void;
+  scheduleRefetchTrigger: number;
+  triggerScheduleRefetch: () => void;
 };
 
 export const UnreadNotificationContext = createContext<UnreadState | null>(null);
@@ -19,6 +21,7 @@ export function UnreadNotificationProvider({ children }: { children: React.React
   const [staffUnread, setStaffUnread] = useState<number | null>(null);
   const [bossUnread, setBossUnread] = useState<number | null>(null);
   const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const [scheduleRefetchTrigger, setScheduleRefetchTrigger] = useState(0);
   const setStaff = useCallback<SetUnread>((n) => {
     setStaffUnread((prev) => (typeof n === "function" ? n(prev) : n));
   }, []);
@@ -26,6 +29,7 @@ export function UnreadNotificationProvider({ children }: { children: React.React
     setBossUnread((prev) => (typeof n === "function" ? n(prev) : n));
   }, []);
   const triggerRefetch = useCallback(() => setRefetchTrigger((t) => t + 1), []);
+  const triggerScheduleRefetch = useCallback(() => setScheduleRefetchTrigger((t) => t + 1), []);
   const value: UnreadState = {
     staffUnread,
     bossUnread,
@@ -33,6 +37,8 @@ export function UnreadNotificationProvider({ children }: { children: React.React
     setBossUnread: setBoss,
     refetchTrigger,
     triggerRefetch,
+    scheduleRefetchTrigger,
+    triggerScheduleRefetch,
   };
   return (
     <UnreadNotificationContext.Provider value={value}>
@@ -57,4 +63,15 @@ export function useSetUnreadNotification(role: Role): SetUnread {
 export function useTriggerNotificationRefetch(): () => void {
   const ctx = useContext(UnreadNotificationContext);
   return ctx?.triggerRefetch ?? (() => {});
+}
+
+/** 수정 요청 승인 등 이후 스케줄/출퇴근 즉시 갱신용 */
+export function useTriggerScheduleRefetch(): () => void {
+  const ctx = useContext(UnreadNotificationContext);
+  return ctx?.triggerScheduleRefetch ?? (() => {});
+}
+
+export function useScheduleRefetchTrigger(): number {
+  const ctx = useContext(UnreadNotificationContext);
+  return ctx?.scheduleRefetchTrigger ?? 0;
 }

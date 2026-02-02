@@ -18,6 +18,7 @@ import CustomDatePicker from "../../../components/common/CustomDatePicker";
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
+import { useScheduleRefetchTrigger } from "../../../contexts/UnreadNotificationContext";
 import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/Schedule";
 
@@ -38,7 +39,7 @@ interface ScheduleItem {
 interface RealTimeStatus {
   userId: number;
   name: string;
-  status: "ON" | "OFF" | "LATE" | "ABSENT";
+  status: "ON" | "OFF" | "LATE" | "ABSENT" | "PENDING";
   /** 출근 시각 (HH:mm 또는 ISO). 등록 근무를 감쌌는지 판단용 */
   checkInTime?: string;
   /** 퇴근 시각 (HH:mm 또는 ISO). 근무 종료 전 조기 퇴근 여부 판단용 */
@@ -78,6 +79,7 @@ const AttendancePage: React.FC = () => {
     isPlanned: false,
   });
   const notificationCount = useNotificationCount("boss");
+  const scheduleRefetchTrigger = useScheduleRefetchTrigger();
 
   // --- 2. 유틸리티 로직 ---
   const weekDays = useMemo(() => {
@@ -117,7 +119,13 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  /** 리스트 + 이름/userId로 상태 색 반환. 퇴근(OFF) 시 조기 퇴근이면 빨강. 실제 근무가 등록 근무를 감싸면(일찍 출근·늦게 퇴근) 정상(초록) */
+  /** 리스트 + 이름/userId로 상태 색 반환.
+   *  규칙:
+   *  - 등록 근무 시간(start~end)과 실제 근무(checkIn~checkOut)가 모두 있을 때
+   *    - 실제가 등록을 완전히 포함(실제시작 <= 등록시작 && 실제종료 >= 등록종료) → 초록(정상)
+   *    - 그 외(조기퇴근, 늦게 출근, 가운데 1분만 찍힘 등) → 빨강(비정상)
+   *  - 그 밖의 경우는 기존 상태 색(ON/ABSENT 등)을 사용
+   */
   const getStatusColorFromList = (
     list: RealTimeStatus[],
     userName: string,
@@ -131,38 +139,50 @@ const AttendancePage: React.FC = () => {
         u.name.trim() === userName.trim() ||
         (userId != null && userId !== 0 && u.userId === userId),
     );
+    if (!user) return "#BDBDBD";
+
     const endM = scheduleEndTime ? timeStringToMinutes(scheduleEndTime) : 0;
     const startM = scheduleStartTime ? timeStringToMinutes(scheduleStartTime) : 0;
-    const actualStartM = user?.checkInTime ? timeStringToMinutes(user.checkInTime) : 0;
-    const actualEndM = user?.checkOutTime ? timeStringToMinutes(user.checkOutTime) : 0;
-    // 등록 근무를 감쌌다 = 실제 출근 ≤ 등록 시작, 실제 퇴근 ≥ 등록 종료 (예: 등록 09:40~09:50, 실제 09:39~09:51 → 정상 초록)
-    const encompassesRegistered =
-      startM > 0 &&
-      endM > 0 &&
-      actualStartM > 0 &&
-      actualEndM > 0 &&
+    const actualStartM = user.checkInTime ? timeStringToMinutes(user.checkInTime) : 0;
+    const actualEndM = user.checkOutTime ? timeStringToMinutes(user.checkOutTime) : 0;
+
+    // 디버깅: 상태 계산 로그
+    if (__DEV__ && user.userId === 9) {
+      console.log(
+        `[getStatusColorFromList] userId=9: name=${user.name}, status=${user.status}, ` +
+          `checkInTime=${user.checkInTime}, checkOutTime=${user.checkOutTime}, ` +
+          `scheduleStart=${scheduleStartTime}, scheduleEnd=${scheduleEndTime}, ` +
+          `actualStartM=${actualStartM}, actualEndM=${actualEndM}, startM=${startM}, endM=${endM}`,
+      );
+    }
+
+    const hasScheduleRange = startM > 0 && endM > 0;
+    const hasActualRange = actualStartM > 0 && actualEndM > 0;
+    const fullyCoversRegistered =
+      hasScheduleRange &&
+      hasActualRange &&
       actualStartM <= startM &&
       actualEndM >= endM;
-    // 조기 퇴근(빨강)은 퇴근 시각이 있고, 그 시각이 예정 종료보다 이른 경우에만. 없거나 파싱 0이면 초록 유지
-    const isEarlyLeave =
-      scheduleEndTime &&
-      user?.checkOutTime &&
-      actualEndM > 0 &&
-      endM > 0 &&
-      actualEndM < endM;
 
-    switch (user?.status) {
+    // ✅ 등록 근무(start~end)가 있고, 실제 출퇴근 구간이 있는데 완전히 포함하지 못하면 → 비정상(빨강)
+    if (hasScheduleRange && hasActualRange && !fullyCoversRegistered) {
+      return "#FF1744";
+    }
+
+    // 여기까지 왔으면
+    // - 등록/실제 둘 다 있는데 완전히 포함하는 경우  → 정상 색
+    // - 등록 또는 실제 구간 정보가 부족한 경우      → 기존 상태 색 유지
+    switch (user.status) {
       case "ON":
-        return "#00E676"; // 녹색
+        return "#00E676"; // 근무중
       case "LATE":
-        if (encompassesRegistered) return "#00E676"; // 실제가 등록을 감쌌으면 정상 출근(초록)
-        return "#FFEB3B"; // 노랑 — 퇴근 후에도 노랑 유지
+        return "#FFEB3B"; // 지각(근무중) - 필요하면 빨강으로 바꿀 수 있음
       case "ABSENT":
-        return "#FF1744"; // 결근 (빨강)
+        return "#FF1744"; // 결근
+      case "PENDING":
+        return "#BDBDBD"; // 출근 대기
       case "OFF":
-        if (encompassesRegistered) return "#00E676"; // 실제가 등록을 감쌌으면 정상 출근(초록)
-        if (isEarlyLeave) return "#FF1744"; // 조기 퇴근 (빨강)
-        return "#00E676"; // 퇴근 완료 → 출근 시 색 유지(녹색)
+        return "#00E676"; // 퇴근 완료 + 위에서 이미 비정상은 빨강으로 걸러짐
       default:
         return "#BDBDBD";
     }
@@ -259,6 +279,8 @@ const AttendancePage: React.FC = () => {
         return "지각(근무중)";
       case "ABSENT":
         return "결근";
+      case "PENDING":
+        return "출근 대기";
       case "OFF":
       default:
         return "근무날아님";
@@ -317,13 +339,53 @@ const AttendancePage: React.FC = () => {
     return s.slice(0, 5) || "00:00";
   }, []);
 
+  /** 출퇴근 API 시간 → "HH:mm". ISO(T14:07)는 문자열에서 추출, UTC 변환 오류 방지 */
+  const attendanceTimeToHHmm = useCallback((timeStr?: string): string => {
+    const s = (timeStr || "").trim();
+    if (!s) return "";
+    const hhmm = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (hhmm) return `${String(parseInt(hhmm[1], 10)).padStart(2, "0")}:${hhmm[2]}`;
+    const match = s.match(/T(\d{1,2}):(\d{2})/);
+    if (match) return `${String(parseInt(match[1], 10)).padStart(2, "0")}:${match[2]}`;
+    const date = new Date(s);
+    if (!Number.isNaN(date.getTime()))
+      return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    return s.slice(0, 5);
+  }, []);
+
   /** "HH:mm" 또는 ISO 문자열 → 분 단위(0~1440). 조기 퇴근 비교용 */
   const timeStringToMinutes = useCallback((timeStr: string): number => {
     const s = (timeStr || "").trim();
     if (!s) return 0;
+    // "HH:mm" 형식 직접 매칭
     const hhmm = s.match(/^(\d{1,2}):(\d{2})$/);
     if (hhmm)
       return parseInt(hhmm[1], 10) * 60 + parseInt(hhmm[2], 10);
+    // ISO 형식에서 T14:07 추출 (UTC 변환 오류 방지)
+    const isoMatch = s.match(/T(\d{1,2}):(\d{2})/);
+    if (isoMatch) {
+      const h = parseInt(isoMatch[1], 10);
+      const m = parseInt(isoMatch[2], 10);
+      // ISO 문자열의 시간이 UTC일 수 있으므로, Date 객체로 로컬 시간 변환 시도
+      // 하지만 백엔드가 KST로 보낸다면 그대로 사용
+      const date = new Date(s);
+      if (!Number.isNaN(date.getTime())) {
+        // Z가 있으면 UTC, 없으면 로컬로 해석됨
+        // 백엔드가 KST로 보내는 경우를 위해 원본 시간도 확인
+        const localH = date.getHours();
+        const localM = date.getMinutes();
+        // UTC와 로컬 시간 차이가 9시간(한국)이면 UTC로 보낸 것으로 간주
+        const hourDiff = Math.abs(localH - h);
+        if (hourDiff === 9 || hourDiff === 15) {
+          // UTC로 보낸 것으로 간주하고 로컬 시간 사용
+          return localH * 60 + localM;
+        }
+        // 그 외에는 ISO 문자열의 시간 그대로 사용 (백엔드가 KST로 보낸 것으로 간주)
+        return h * 60 + m;
+      }
+      return h * 60 + m;
+    }
+    // Date 객체로 파싱 시도
     const date = new Date(s);
     if (!Number.isNaN(date.getTime()))
       return date.getHours() * 60 + date.getMinutes();
@@ -346,12 +408,17 @@ const AttendancePage: React.FC = () => {
       let status = String(
         item.status ?? item.attendanceStatus ?? item.attendance_status ?? item.state ?? "",
       ).toUpperCase();
-      if (status !== "ON" && status !== "OFF" && status !== "LATE" && status !== "ABSENT") {
+      // 백엔드가 ON, OFF, LATE, ABSENT, PENDING을 대문자로 보냄
+      if (status !== "ON" && status !== "OFF" && status !== "LATE" && status !== "ABSENT" && status !== "PENDING") {
         if (["PRESENT", "IN", "WORKING"].includes(status)) status = "ON";
         else if (["LATE"].includes(status)) status = "LATE";
         else if (["ABSENT", "MISSING"].includes(status)) status = "ABSENT";
         else status = "OFF";
       }
+      // PENDING은 출근 대기 상태이므로 OFF로 처리 (또는 회색으로 표시 가능)
+      if (status === "PENDING") status = "OFF";
+      // 백엔드가 startTime/endTime으로 보냄 (ISO 8601 KST: "2025-01-31T09:39:00+09:00")
+      // time 필드도 있지만 ("HH:mm~HH:mm") ISO 형식이 더 정확하므로 우선 사용
       const checkInTime =
         (item.startTime ?? item.checkInTime ?? item.start_time ?? item.check_in_time) as string | undefined;
       const checkOutTime =
@@ -375,9 +442,10 @@ const AttendancePage: React.FC = () => {
           headers,
         });
         const data = response.data;
+        // 백엔드 응답 구조: { data: { list: [...] } } 또는 { data: [...] }
         const rawList =
-          data?.data?.list ??
-          data?.data ??
+          data?.data?.list ??  // TodayResponse.list (백엔드 실제 구조)
+          data?.data ??        // 평탄한 배열
           data?.list ??
           data?.attendances ??
           data?.workers ??
@@ -395,10 +463,16 @@ const AttendancePage: React.FC = () => {
           if (normalized.length > 0) {
             normalized.forEach((item: any, i: number) => {
               console.log(
-                `[attendances/today] raw[${i}] name=${item.name ?? item.userName ?? item.workerName}, userId=${item.userId ?? item.id}, status(원본)=${item.status ?? item.attendanceStatus ?? "(없음)"}`,
+                `[attendances/today] raw[${i}] attendanceId=${item.attendanceId ?? "(없음)"}, userId=${item.userId ?? item.id}, name=${item.name ?? item.userName ?? item.workerName}, status=${item.status ?? "(없음)"}, startTime=${item.startTime ?? "(없음)"}, endTime=${item.endTime ?? "(없음)"}, time=${item.time ?? "(없음)"}`,
               );
             });
             console.log("[attendances/today] 매핑 결과 mapped:", JSON.stringify(mapped, null, 2));
+            // 상태별 분류 확인
+            const statusCounts = mapped.reduce((acc: any, item: RealTimeStatus) => {
+              acc[item.status] = (acc[item.status] || 0) + 1;
+              return acc;
+            }, {});
+            console.log("[attendances/today] 상태별 개수:", statusCounts);
           } else {
             console.log("[attendances/today] rawList 비어 있음 → 매핑 결과도 빈 배열");
           }
@@ -491,6 +565,18 @@ const AttendancePage: React.FC = () => {
     }, [currentStoreId, fetchTodayStatus, fetchTodayWeekSchedule])
   );
 
+  // 기록 수정 승인 시 즉시 재조회 (14:07→14:00 수정 시 지각→정상 반영)
+  useEffect(() => {
+    if (!currentStoreId || scheduleRefetchTrigger <= 0) return;
+    fetchTodayStatus(currentStoreId);
+    fetchTodayWeekSchedule(currentStoreId);
+    fetchWeeklySchedule(currentStoreId, selectedDate);
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (selectedDate < todayStr) {
+      fetchSelectedDateAttendances(currentStoreId, selectedDate);
+    }
+  }, [scheduleRefetchTrigger]);
+
   // 같은 화면에 있는 동안 5초마다 출퇴근 목록 재조회
   useEffect(() => {
     if (!currentStoreId) return;
@@ -521,14 +607,35 @@ const AttendancePage: React.FC = () => {
   const sortByStartTime = (list: ScheduleItem[]) =>
     [...list].sort((a, b) => timeToMinutes(startTime(a)) - timeToMinutes(startTime(b)));
 
-  /** 상단 "아르바이트생 출퇴근 기록 확인" — 항상 당일만 (todayWeekSchedules 사용, 날짜 변경과 무관) */
+  /** 상단 "아르바이트생 출퇴근 기록 확인" — 알바생마다 따로 표시, 시간 빠른 순 정렬 */
   const todaySchedulesForAttendance = useMemo(() => {
     const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
     const today = new Date();
     const todayDay = dayNames[today.getDay()];
     const byDay = todayWeekSchedules.filter((item) => item.day === todayDay);
     const valid = byDay.filter((item) => !isDeletedSlot(item));
-    return sortByStartTime(valid);
+    const sorted = sortByStartTime(valid);
+    // 알바생마다 따로 행으로 펼침 (크롱, 애니 14:00~20:00 → 크롱 14:00~20:00 / 애니 14:00~20:00)
+    const flattened: Array<{ workerName: string; userId?: number; startTime: string; endTime: string }> = [];
+    for (const item of sorted) {
+      const st = startTime(item);
+      const et = endTime(item);
+      const workers = item.workers ?? [];
+      if (workers.length === 0) {
+        flattened.push({ workerName: "알바생", startTime: st, endTime: et });
+      } else {
+        for (const w of workers) {
+          flattened.push({
+            workerName: w.name || "알바생",
+            userId: w.userId,
+            startTime: st,
+            endTime: et,
+          });
+        }
+      }
+    }
+    // 시간 빠른 사람이 위로 (이미 sortByStartTime으로 정렬된 순서 유지)
+    return flattened;
   }, [todayWeekSchedules]);
 
   /** 하단 "근무 수정" — 선택한 날짜(selectedDate) 기준 */
@@ -595,15 +702,27 @@ const AttendancePage: React.FC = () => {
         </Text>
         <View style={styles.sectionCard}>
           {todaySchedulesForAttendance.length > 0 ? (
-            todaySchedulesForAttendance.map((item, idx) => (
-              <View key={idx} style={styles.infoRow}>
+            todaySchedulesForAttendance.map((entry, idx) => {
+                const attUser = realTimeAttendances?.find(
+                  (u) =>
+                    (entry.userId != null && u.userId === entry.userId) ||
+                    u.name.trim() === entry.workerName.trim()
+                );
+                const recordedStart = attUser?.checkInTime
+                  ? attendanceTimeToHHmm(attUser.checkInTime)
+                  : "";
+                const recordedEnd = attUser?.checkOutTime
+                  ? attendanceTimeToHHmm(attUser.checkOutTime)
+                  : "";
+                const displayStart = recordedStart || entry.startTime;
+                const displayEnd = recordedEnd || entry.endTime;
+                return (
+              <View key={`${entry.workerName}-${entry.userId ?? idx}-${idx}`} style={styles.infoRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.userName}>
-                    {item.workers?.map((w) => w.name).join(", ")}
-                  </Text>
+                  <Text style={styles.userName}>{entry.workerName}</Text>
                 </View>
                 <Text style={styles.timeText}>
-                  {startTime(item)} ~ {endTime(item)}
+                  {displayStart} ~ {displayEnd}
                 </Text>
                 {/* 실시간 상태: 당일 근무 시작 전이면 회색, 시작 후 출퇴근 없으면 빨강, 조기 퇴근 시 빨강, 퇴근 후에도 출근 시 색 유지 */}
                 <View
@@ -612,16 +731,17 @@ const AttendancePage: React.FC = () => {
                     {
                       backgroundColor: getStatusColorForWorkDate(
                         new Date().toISOString().split("T")[0],
-                        item.workers?.[0]?.name || "",
-                        item.workers?.[0]?.userId,
-                        startTime(item),
-                        endTime(item),
+                        entry.workerName,
+                        entry.userId,
+                        entry.startTime,
+                        entry.endTime,
                       ),
                     },
                   ]}
                 />
               </View>
-            ))
+                );
+            })
           ) : (
             <Text style={{ textAlign: "center", padding: 20, color: "#999" }}>
               기록이 없습니다.

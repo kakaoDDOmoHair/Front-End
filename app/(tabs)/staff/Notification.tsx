@@ -51,7 +51,24 @@ function formatTimeForDisplay(timeStr?: string): string {
   return s.slice(0, 5);
 }
 
-const STAFF_READ_KEYS_KEY = "staff_read_notification_keys";
+const STAFF_READ_KEYS_PREFIX = "staff_read_notification_keys";
+const STAFF_READ_KEYS_LEGACY = "staff_read_notification_keys";
+
+/** 사용자별 읽음 키 → 로그인 새로 해도 같은 사용자 읽음 유지 */
+function getStaffReadKeysKey(username: string): string {
+  return username ? `${STAFF_READ_KEYS_PREFIX}_${username}` : STAFF_READ_KEYS_LEGACY;
+}
+
+/** salary/history 응답의 month: 숫자(1~12) 또는 "1월" 등 문자열 모두 처리 */
+function parseSalaryMonth(s: { month?: unknown }): number {
+  const m = s?.month;
+  if (typeof m === "number" && m >= 1 && m <= 12) return m;
+  if (typeof m === "string") {
+    const match = m.match(/^(\d{1,2})/);
+    if (match) return parseInt(match[1], 10);
+  }
+  return new Date().getMonth() + 1;
+}
 
 function typeToIcon(type?: string): string {
   const t = (type || "").toUpperCase();
@@ -101,6 +118,15 @@ function isBossOnlyNotification(n: BackendNotificationItem): boolean {
   return false;
 }
 
+/** 백엔드 "임금명세서 발송 완료" 알림 → salary/history 기반 "임금 명세서"로 통합하므로 제외 */
+function isBackendPayslipDuplicate(n: BackendNotificationItem): boolean {
+  const title = (n.title || "").toString().trim();
+  const msg = (n.message || "").toString();
+  if (/임금명세서\s*발송\s*완료|명세서.*발송.*완료/i.test(title)) return true;
+  if ((n.type || "").toUpperCase() === "PAYSLIP" && /이메일.*발송|발송.*되었습니다/i.test(msg)) return true;
+  return false;
+}
+
 export default function StaffNotificationScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string }>();
@@ -141,7 +167,13 @@ export default function StaffNotificationScreen() {
       }
       const headers = await getAuthHeader();
       const backendList = await fetchNotifications(headers);
-      const staffList = backendList.filter((n) => !isBossOnlyNotification(n));
+      const staffList = backendList.filter(
+        (n) => !isBossOnlyNotification(n) && !isBackendPayslipDuplicate(n)
+      );
+      if (__DEV__) {
+        console.log("[알림] GET /notifications 응답 개수:", backendList.length, "| staff 필터 후:", staffList.length);
+        if (staffList.length > 0) console.log("[알림] 사용 경로: backend (GET /notifications)");
+      }
       if (staffList.length > 0) {
         let list = staffList;
         const meRes = await api.get("/api/v1/users/me", { params: { username }, headers }).catch(() => null);
@@ -156,9 +188,70 @@ export default function StaffNotificationScreen() {
           });
         }
         const items = list.map(mapBackendToItem);
+        // backend에 명세서 알림이 없을 수 있음 → salary/history payslipSentAt으로 병합
+        const uid = myUserId != null ? Number(myUserId) : null;
+        if (uid != null) {
+          try {
+            const salaryRes = await api.get("/api/v1/salary/history", { params: { userId: uid }, headers }).catch(() => ({ data: [] }));
+            const salaryList = Array.isArray(salaryRes.data) ? salaryRes.data : salaryRes.data?.data ?? salaryRes.data?.list ?? [];
+            let idGen = items.length > 0 ? Math.max(...items.map((n) => n.id)) + 1 : 1;
+            for (const s of salaryList) {
+              const status = String(s?.status ?? "").toUpperCase();
+              const year = s.year ?? new Date().getFullYear();
+              const month = parseSalaryMonth(s);
+              const completedAt = s.completedAt ?? s.completed_at ?? s.updatedAt ?? s.updated_at ?? s.createdAt ?? s.created_at ?? s.sentAt ?? s.sent_at ?? s.paidAt ?? s.paid_at ?? s.processedAt ?? s.processed_at;
+              const completedAtStr = typeof completedAt === "string" ? completedAt : typeof completedAt === "number" ? new Date(completedAt).toISOString() : "";
+              const sortAt1 = completedAtStr || `${year}-${String(month).padStart(2, "0")}-01T00:00:00Z`;
+              // 백엔드: payslipSentAt(KST ISO 8601) — 발송 시 저장·반환. null이면 미발송
+              const payslipSentAt = s.payslipSentAt ?? s.payslip_sent_at ?? s.payslipSentDate ?? s.payslip_sent_date ?? s.sentAt ?? s.sent_at ?? (s.payslipSent ? completedAt : null);
+              const payslipTimeStr = typeof payslipSentAt === "string" ? payslipSentAt : typeof payslipSentAt === "number" ? new Date(payslipSentAt).toISOString() : "";
+              if (payslipTimeStr) {
+                // payslipSentAt 있으면 그대로 사용 → "N분 전" 정확히 표시 (백엔드 구현 반영)
+                const payslipSortAt = payslipTimeStr;
+                const payslipStableTime = payslipTimeStr.replace(/\.\d{3}Z?$/i, "").slice(0, 19);
+                const payslipReadKey = `payslip-${year}-${month}-${payslipStableTime}`;
+                const payslipTimeLabel = formatRelativeTime(payslipTimeStr);
+                const alreadyHas = items.some((n) => n.readKey === payslipReadKey);
+                if (!alreadyHas) {
+                  items.push({
+                    id: idGen++,
+                    icon: "📧",
+                    name: "임금 명세서",
+                    message: `사장님이 ${month}월 임금 명세서를 발송했습니다. 이메일을 확인해 주세요.`,
+                    time: payslipTimeLabel,
+                    category: getCategory(payslipSortAt),
+                    isRead: false,
+                    sortAt: payslipSortAt,
+                    readKey: payslipReadKey,
+                  });
+                }
+              }
+            }
+          } catch (_) {}
+        }
         // 최신 알림이 상단에 오도록 정렬
         items.sort((a, b) => getSortTimestamp(b.sortAt) - getSortTimestamp(a.sortAt));
         const recentItems = filterRecentOnly(items);
+        // AsyncStorage 읽음 적용 → 로그인 새로 해도 같은 사용자 읽음 유지
+        try {
+          const raw = await AsyncStorage.getItem(getStaffReadKeysKey(username));
+          let readKeys: string[] = raw ? JSON.parse(raw) : [];
+          if (readKeys.length === 0) {
+            const legacyRaw = await AsyncStorage.getItem(STAFF_READ_KEYS_LEGACY);
+            if (legacyRaw) {
+              readKeys = JSON.parse(legacyRaw);
+              await AsyncStorage.setItem(getStaffReadKeysKey(username), JSON.stringify(readKeys));
+            }
+          }
+          const readSet = new Set(readKeys);
+          recentItems.forEach((n) => {
+            if (n.readKey && readSet.has(n.readKey)) n.isRead = true;
+          });
+        } catch (_) {}
+        if (__DEV__) {
+          const payslipInBackend = recentItems.filter((n) => n.name === "임금 명세서" || /명세서/.test(n.message ?? ""));
+          console.log("[알림] backend 경로 최종:", recentItems.length, "| 명세서 포함:", payslipInBackend.length);
+        }
         setNotifications(recentItems);
         const unreadCount = recentItems.filter((n) => !n.isRead).length;
         setStaffUnread(unreadCount);
@@ -168,6 +261,7 @@ export default function StaffNotificationScreen() {
         return;
       }
       setUseBackendList(false);
+      if (__DEV__) console.log("[알림] 사용 경로: synthetic (salary/history + 기타)");
       const meRes = await api.get("/api/v1/users/me", { params: { username }, headers });
       const me = meRes.data?.data ?? meRes.data;
       const userId = me?.userId ?? me?.id ?? null;
@@ -180,7 +274,7 @@ export default function StaffNotificationScreen() {
       const items: NotificationItemData[] = [];
       let idGen = 1;
 
-      const [modList, salaryRes, attRes, scheduleRes] = await Promise.all([
+      const [modList, salaryRes, attRes, scheduleRes, backendNotifs] = await Promise.all([
         storeId != null
           ? fetchModifications({ storeId: Number(storeId), requesterId: uid, status: "APPROVED" }, headers).catch(() => [])
           : Promise.resolve([]),
@@ -190,7 +284,32 @@ export default function StaffNotificationScreen() {
           headers,
         }).catch(() => ({ data: {} })),
         api.get("/api/v1/schedules/my-weekly", { params: { username }, headers }).catch(() => ({ data: {} })),
+        fetchNotifications(headers).catch(() => []),
       ]);
+
+      // 백엔드가 명세서 발송 시 Notification 생성하면 병합 (salary/history payslipSentAt 없을 때 대비)
+      const backendNotifList = Array.isArray(backendNotifs) ? backendNotifs : [];
+      if (__DEV__) console.log("[알림] GET /notifications (synthetic 병합용):", backendNotifList.length, "건");
+      for (const bn of backendNotifList) {
+        if (isBackendPayslipDuplicate(bn)) continue; // "임금명세서 발송 완료" → salary/history 기반으로 통합
+        const msg = (bn.message ?? bn.title ?? "").toString();
+        const isPayslip = /명세서|payslip/i.test(msg) || (bn.type ?? "").toUpperCase() === "PAYSLIP";
+        if (isPayslip) {
+          if (__DEV__) console.log("[알림] backend에서 명세서 알림 병합:", bn.id, msg);
+          const sortAt = bn.createdAt ?? new Date().toISOString();
+          items.push({
+            id: idGen++,
+            icon: "📧",
+            name: "임금 명세서",
+            message: msg || "사장님이 임금 명세서를 발송했습니다. 이메일을 확인해 주세요.",
+            time: formatRelativeTime(sortAt),
+            category: getCategory(sortAt),
+            isRead: !!bn.isRead,
+            sortAt,
+            readKey: `backend-payslip-${bn.id}`,
+          });
+        }
+      }
 
       for (const m of modList) {
         const timeSource = m.updatedAt ?? m.createdAt;
@@ -210,13 +329,18 @@ export default function StaffNotificationScreen() {
       }
 
       const salaryList = Array.isArray(salaryRes.data) ? salaryRes.data : salaryRes.data?.data ?? salaryRes.data?.list ?? [];
+      if (__DEV__) {
+        console.log("[알림] GET /salary/history 응답:", JSON.stringify(salaryRes.data, null, 2));
+        console.log("[알림] salaryList 개수:", salaryList.length, "| 추출된 목록:", salaryList.map((s: any) => ({
+          month: s.month,
+          status: s.status,
+          payslipSentAt: s.payslipSentAt ?? s.payslip_sent_at ?? "(없음)",
+        })));
+      }
       for (const s of salaryList) {
         const status = String(s?.status ?? "").toUpperCase();
-        if (status !== "COMPLETED") continue;
         const year = s.year ?? new Date().getFullYear();
-        const month = s.month ?? new Date().getMonth() + 1;
-        const amount = s.amount ?? s.totalAmount ?? 0;
-        const amountStr = typeof amount === "number" ? `${amount.toLocaleString()}원` : String(amount);
+        const month = parseSalaryMonth(s);
         const completedAt = s.completedAt ?? s.completed_at ?? s.updatedAt ?? s.updated_at ?? s.createdAt ?? s.created_at ?? s.sentAt ?? s.sent_at ?? s.paidAt ?? s.paid_at ?? s.processedAt ?? s.processed_at;
         const completedAtStr = typeof completedAt === "string"
           ? completedAt
@@ -224,42 +348,50 @@ export default function StaffNotificationScreen() {
             ? new Date(completedAt).toISOString()
             : "";
         const sortAt1 = completedAtStr || `${year}-${String(month).padStart(2, "0")}-01T00:00:00Z`;
-        const stableTime = completedAtStr ? completedAtStr.replace(/\.\d{3}Z?$/i, "").slice(0, 19) : "";
-        const salaryReadKey = `salary-${year}-${month}${stableTime ? `-${stableTime}` : ""}`;
-        const timeLabel = completedAtStr ? formatRelativeTime(completedAtStr) : "방금 전";
-        items.push({
-          id: idGen++,
-          icon: "💰",
-          name: "급여 입금",
-          message: `${month}월 급여 ${amountStr}이 입금되었습니다.`,
-          time: timeLabel,
-          category: getCategory(completedAtStr || sortAt1),
-          isRead: false,
-          sortAt: sortAt1,
-          readKey: salaryReadKey,
-        });
+
+        // 급여 입금: COMPLETED일 때만
+        if (status === "COMPLETED") {
+          const amount = s.amount ?? s.totalAmount ?? 0;
+          const amountStr = typeof amount === "number" ? `${amount.toLocaleString()}원` : String(amount);
+          const stableTime = completedAtStr ? completedAtStr.replace(/\.\d{3}Z?$/i, "").slice(0, 19) : "";
+          const salaryReadKey = `salary-${year}-${month}${stableTime ? `-${stableTime}` : ""}`;
+          const timeLabel = completedAtStr ? formatRelativeTime(completedAtStr) : "방금 전";
+          items.push({
+            id: idGen++,
+            icon: "💰",
+            name: "급여 입금",
+            message: `${month}월 급여 ${amountStr}이 입금되었습니다.`,
+            time: timeLabel,
+            category: getCategory(completedAtStr || sortAt1),
+            isRead: false,
+            sortAt: sortAt1,
+            readKey: salaryReadKey,
+          });
+        }
+
+        // 임금 명세서: payslipSentAt(KST ISO 8601) 있을 때만 추가 — 백엔드가 발송 시 저장·반환
         const payslipSentAt = s.payslipSentAt ?? s.payslip_sent_at ?? s.payslipSentDate ?? s.payslip_sent_date ?? s.sentAt ?? s.sent_at ?? (s.payslipSent ? completedAt : null);
-        const payslipRaw = payslipSentAt ?? completedAt;
-        const payslipTimeStr = typeof payslipRaw === "string"
-          ? payslipRaw
-          : typeof payslipRaw === "number"
-            ? new Date(payslipRaw).toISOString()
-            : "";
-        const payslipSortAt = payslipTimeStr || sortAt1;
-        const payslipStableTime = payslipTimeStr ? payslipTimeStr.replace(/\.\d{3}Z?$/i, "").slice(0, 19) : "";
-        const payslipReadKey = `payslip-${year}-${month}${payslipStableTime ? `-${payslipStableTime}` : ""}`;
-        const payslipTimeLabel = payslipTimeStr ? formatRelativeTime(payslipTimeStr) : "방금 전";
-        items.push({
-          id: idGen++,
-          icon: "📧",
-          name: "임금 명세서",
-          message: `${month}월 임금 명세서가 발송되었습니다. 이메일을 확인해 주세요.`,
-          time: payslipTimeLabel,
-          category: getCategory(payslipSortAt),
-          isRead: false,
-          sortAt: payslipSortAt,
-          readKey: payslipReadKey,
-        });
+        const payslipTimeStr = typeof payslipSentAt === "string" ? payslipSentAt : typeof payslipSentAt === "number" ? new Date(payslipSentAt).toISOString() : "";
+        if (payslipTimeStr) {
+          const payslipSortAt = payslipTimeStr;
+          const payslipStableTime = payslipTimeStr.replace(/\.\d{3}Z?$/i, "").slice(0, 19);
+          const payslipReadKey = `payslip-${year}-${month}-${payslipStableTime}`;
+          const payslipTimeLabel = formatRelativeTime(payslipTimeStr);
+          if (__DEV__) console.log("[알림] 임금 명세서 추가:", `${month}월`, "payslipSentAt:", payslipSentAt ?? "(fallback)");
+          items.push({
+            id: idGen++,
+            icon: "📧",
+            name: "임금 명세서",
+            message: `사장님이 ${month}월 임금 명세서를 발송했습니다. 이메일을 확인해 주세요.`,
+            time: payslipTimeLabel,
+            category: getCategory(payslipSortAt),
+            isRead: false,
+            sortAt: payslipSortAt,
+            readKey: payslipReadKey,
+          });
+        } else if (__DEV__) {
+          console.log("[알림] 임금 명세서 스킵:", `${month}월`, "payslipTimeStr:", payslipTimeStr, "status:", status);
+        }
       }
 
       // GET /api/v1/attendances/monthly: 본인 userId로 호출. 백엔드가 다른 유저 데이터를 섞어 보낼 수 있으므로 본인 것만 필터
@@ -346,9 +478,21 @@ export default function StaffNotificationScreen() {
       // 최신 알림이 상단에 오도록 정렬
       items.sort((a, b) => getSortTimestamp(b.sortAt) - getSortTimestamp(a.sortAt));
       const recentItems = filterRecentOnly(items);
+      if (__DEV__) {
+        const payslipCount = recentItems.filter((n) => n.name === "임금 명세서").length;
+        console.log("[알림] 최종 items:", items.length, "| filterRecentOnly 후:", recentItems.length, "| 임금 명세서 개수:", payslipCount);
+        if (payslipCount === 0 && salaryList.length > 0) console.warn("[알림] salaryList 있으나 임금 명세서 0건 → payslipSentAt 또는 filterRecentOnly(90일) 확인");
+      }
       try {
-        const raw = await AsyncStorage.getItem(STAFF_READ_KEYS_KEY);
-        const readKeys: string[] = raw ? JSON.parse(raw) : [];
+        const raw = await AsyncStorage.getItem(getStaffReadKeysKey(username));
+        let readKeys: string[] = raw ? JSON.parse(raw) : [];
+        if (readKeys.length === 0) {
+          const legacyRaw = await AsyncStorage.getItem(STAFF_READ_KEYS_LEGACY);
+          if (legacyRaw) {
+            readKeys = JSON.parse(legacyRaw);
+            await AsyncStorage.setItem(getStaffReadKeysKey(username), JSON.stringify(readKeys));
+          }
+        }
         const readSet = new Set(readKeys);
         recentItems.forEach((n) => {
           if (n.readKey && readSet.has(n.readKey)) n.isRead = true;
@@ -380,21 +524,25 @@ export default function StaffNotificationScreen() {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
-    if (useBackendList) {
+    // 백엔드 알림(backend-xxx)만 API 호출. synthetic(임금명세서 등)은 AsyncStorage만 사용
+    if (useBackendList && item.readKey?.startsWith("backend-")) {
       getAuthHeader().then((headers) => markNotificationRead(id, headers).then(() => triggerNotificationRefetch()));
-      return;
     }
-    if (!item.readKey) return;
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STAFF_READ_KEYS_KEY);
-        const readKeys: string[] = raw ? JSON.parse(raw) : [];
-        if (!readKeys.includes(item.readKey!)) {
-          readKeys.push(item.readKey!);
-          await AsyncStorage.setItem(STAFF_READ_KEYS_KEY, JSON.stringify(readKeys));
-        }
-      } catch (_) {}
-    })();
+    // 항상 AsyncStorage에 읽음 저장 → 로그인 새로 해도 같은 사용자 읽음 유지
+    if (item.readKey) {
+      (async () => {
+        try {
+          const username = await AsyncStorage.getItem("username") ?? "";
+          const key = getStaffReadKeysKey(username);
+          const raw = await AsyncStorage.getItem(key);
+          const readKeys: string[] = raw ? JSON.parse(raw) : [];
+          if (!readKeys.includes(item.readKey!)) {
+            readKeys.push(item.readKey!);
+            await AsyncStorage.setItem(key, JSON.stringify(readKeys));
+          }
+        } catch (_) {}
+      })();
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -407,10 +555,12 @@ export default function StaffNotificationScreen() {
       triggerNotificationRefetch();
     } catch (_) {}
     try {
-      const raw = await AsyncStorage.getItem(STAFF_READ_KEYS_KEY);
+      const username = await AsyncStorage.getItem("username") ?? "";
+      const key = getStaffReadKeysKey(username);
+      const raw = await AsyncStorage.getItem(key);
       const existing: string[] = raw ? JSON.parse(raw) : [];
       const set = new Set([...existing, ...readKeys]);
-      await AsyncStorage.setItem(STAFF_READ_KEYS_KEY, JSON.stringify([...set]));
+      await AsyncStorage.setItem(key, JSON.stringify([...set]));
     } catch (_) {}
   };
 

@@ -16,7 +16,7 @@ function mergeHeaders(headers?: Record<string, string>) {
 
 // --- 타입 ---
 export type ModificationTargetType = "ATTENDANCE" | "SCHEDULE";
-export type ModificationRequestType = "UPDATE" | "DELETE";
+export type ModificationRequestType = "UPDATE" | "DELETE" | "REGISTER";
 export type ModificationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface ModificationRequestItem {
@@ -42,7 +42,7 @@ export interface RegisterModificationBody {
   storeId: number;
   targetType: ModificationTargetType;
   targetId: number;
-  requestType: ModificationRequestType; // "UPDATE" | "DELETE" — 사장님 알림에서 수정/삭제 구분
+  requestType: ModificationRequestType; // "UPDATE" | "DELETE" | "REGISTER" (ATTENDANCE REGISTER는 백엔드 미지원)
   afterValue: string; // "HH:mm~HH:mm" 형식 (삭제 시 "00:00~00:00" 등)
   targetDate: string; // "YYYY-MM-DD"
   reason: string;

@@ -9,13 +9,18 @@ interface BossNotificationItemProps {
   onReject?: (id: number) => void;
 }
 
+/** 제목/이름에 포함된 이모지 제거 → 아이콘은 왼쪽에 한 번만 표시 */
+function stripEmojiFromText(text: string): string {
+  const cleaned = String(text || "").replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{231A}-\u{231B}\u{23F0}-\u{23F3}]/gu, "").trim();
+  return cleaned || String(text || "").trim();
+}
+
 export const BossNotificationItem: React.FC<BossNotificationItemProps> = ({
   data,
   onPress,
   onApprove,
   onReject,
 }) => {
-  
   return (
     <View style={itemStyles.container}>
       <TouchableOpacity 
@@ -26,7 +31,7 @@ export const BossNotificationItem: React.FC<BossNotificationItemProps> = ({
         <View style={itemStyles.topRow}>
           <View style={itemStyles.titleRow}>
             <Text style={itemStyles.iconText}>{data.icon}</Text>
-            <Text style={itemStyles.categoryTag}>{data.name}</Text>
+            <Text style={itemStyles.categoryTag}>{stripEmojiFromText(data.name)}</Text>
           </View>
           <Text style={itemStyles.timeText}>{data.time}</Text>
         </View>
@@ -97,7 +102,7 @@ const itemStyles = StyleSheet.create({
     paddingRight: 8,
   },
   iconText: {
-    fontSize: 18,
+    fontSize: 25,
     marginRight: 6,
   },
   categoryTag: {
