@@ -1,7 +1,6 @@
 import { CustomButton } from "@/components/common/CustomButton";
 import { CustomInput } from "@/components/common/CustomInput";
 import api from "@/constants/api";
-import { useTriggerNotificationRefetch } from "@/contexts/UnreadNotificationContext";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link, useRouter } from "expo-router";
@@ -19,7 +18,6 @@ import { styles } from "../../styles/auth/Login";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const triggerNotificationRefetch = useTriggerNotificationRefetch();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -115,9 +113,6 @@ export default function LoginScreen() {
         }
 
         showAlert(`${result.name || username}님 환영합니다!`);
-
-        // 알림 배지 즉시 갱신 (대시보드 진입 시 개수 반영)
-        triggerNotificationRefetch();
 
         // 3. 역할(Role)에 따른 페이지 이동
         if (result.role === "OWNER") {
