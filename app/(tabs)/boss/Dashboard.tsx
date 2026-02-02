@@ -218,7 +218,7 @@ export default function DashboardScreen() {
       }
       const list = Array.isArray(payload)
         ? payload
-        : payload?.list ?? payload?.attendances ?? payload?.items ?? [];
+        : (payload?.list ?? payload?.attendances ?? payload?.items ?? []);
       const normalized = Array.isArray(list) ? list : [];
       const formatTime = (value: any) => {
         if (!value) return null;
@@ -240,7 +240,9 @@ export default function DashboardScreen() {
         }
         const normalizedValue = raw.includes("T") ? raw : raw.replace(" ", "T");
         const hasTimezone = /Z|[+-]\d{2}:?\d{2}$/.test(normalizedValue);
-        const date = new Date(hasTimezone ? normalizedValue : `${normalizedValue}Z`);
+        const date = new Date(
+          hasTimezone ? normalizedValue : `${normalizedValue}Z`,
+        );
         if (!Number.isNaN(date.getTime())) {
           const hours = String(date.getHours()).padStart(2, "0");
           const minutes = String(date.getMinutes()).padStart(2, "0");
@@ -313,7 +315,9 @@ export default function DashboardScreen() {
       const parseScheduleRange = (value: string) => {
         if (!value) return null;
         const cleaned = value.replace(/\s/g, "");
-        const parts = cleaned.includes("~") ? cleaned.split("~") : cleaned.split("-");
+        const parts = cleaned.includes("~")
+          ? cleaned.split("~")
+          : cleaned.split("-");
         if (parts.length < 2) return null;
         const start = parseTimeValue(parts[0]);
         const end = parseTimeValue(parts[1]);
@@ -373,7 +377,9 @@ export default function DashboardScreen() {
           const ranges = scheduleByName.get(item.name) ?? [];
           if (ranges.length === 0) return item;
           const earliest = ranges.slice().sort((a, b) => a.start - b.start)[0];
-          const actualStart = item.time ? item.time.split("~")[0]?.trim() : null;
+          const actualStart = item.time
+            ? item.time.split("~")[0]?.trim()
+            : null;
           const actualMinutes = parseTimeValue(actualStart ?? "");
           if (actualMinutes != null && actualMinutes > earliest.start) {
             return { ...item, status: "LATE" };
@@ -496,7 +502,10 @@ export default function DashboardScreen() {
       setWeeklySchedules(grouped);
     } catch (error) {
       setWeeklySchedules(
-        dayOrder.map((day) => ({ day: dayLabelMap[day] || day, schedules: [] })),
+        dayOrder.map((day) => ({
+          day: dayLabelMap[day] || day,
+          schedules: [],
+        })),
       );
     }
   };
@@ -686,7 +695,6 @@ export default function DashboardScreen() {
           schedules: [],
         }));
 
-
   if (isLoading) {
     return (
       <SafeAreaView
@@ -707,8 +715,8 @@ export default function DashboardScreen() {
         <Header notificationCount={notificationCount} />
         <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
           <Text style={{ fontSize: 25, fontWeight: "bold" }}>
-            반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text> 님!👋
-            👋
+            반갑습니다, <Text style={{ color: "#9747FF" }}>{userName}</Text>{" "}
+            님!👋
           </Text>
         </View>
 
@@ -760,7 +768,8 @@ export default function DashboardScreen() {
 
         <View style={styles.greetingContainer}>
           <Text style={styles.greetingText}>
-            반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
+            반갑습니다, <Text style={styles.greetingName}>{userName}</Text>{" "}
+            님!👋
           </Text>
         </View>
 
@@ -795,7 +804,7 @@ export default function DashboardScreen() {
               {formatNumber(totalMonthlyAccumulated)}원
             </Text>
             <Text style={styles.costDesc}>
-              <Text>전월보다{" "}</Text>
+              <Text>전월보다 </Text>
               <Text
                 style={{
                   color: growthDiffAmount >= 0 ? "#FF4444" : "#4444FF",
@@ -804,8 +813,7 @@ export default function DashboardScreen() {
               >
                 {formatNumber(Math.abs(growthDiffAmount))}
               </Text>
-              원{" "}
-              {growthDiffAmount >= 0 ? "더 올랐습니다." : "줄었습니다."}
+              원 {growthDiffAmount >= 0 ? "더 올랐습니다." : "줄었습니다."}
             </Text>
           </View>
 
@@ -813,7 +821,9 @@ export default function DashboardScreen() {
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>현재 근무 중인 직원</Text>
               <View style={styles.countBadge}>
-                <Text style={styles.countText}>{todayAttendances.length}명</Text>
+                <Text style={styles.countText}>
+                  {todayAttendances.length}명
+                </Text>
               </View>
             </View>
             {todayAttendances.length === 0 ? (
@@ -829,7 +839,10 @@ export default function DashboardScreen() {
                 contentContainerStyle={styles.horizontalScroll}
               >
                 {todayAttendances.map((item, idx) => (
-                  <View key={`${item.userId}-${idx}`} style={{ marginRight: 12 }}>
+                  <View
+                    key={`${item.userId}-${idx}`}
+                    style={{ marginRight: 12 }}
+                  >
                     <WorkerCard
                       data={{
                         id: String(item.userId),
@@ -849,7 +862,6 @@ export default function DashboardScreen() {
             )}
           </View>
         </View>
-
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>오늘의 To Do List</Text>
