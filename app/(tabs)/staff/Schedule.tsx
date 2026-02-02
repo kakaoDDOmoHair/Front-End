@@ -4,18 +4,18 @@ import { useFocusEffect, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useState } from "react";
 import {
-    Alert,
-    Keyboard,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Alert,
+  Keyboard,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 import api from "../../../constants/api";
 import type { ModificationTargetType } from "../../../services/modificationApi";
@@ -442,8 +442,137 @@ const WorkerSchedule: React.FC = () => {
       return;
     }
 
-    let targetId: number;
     const normRequestDate = normalizeDate(requestDate);
+    const detail = workHistory.find((w) => normalizeDate(w.date) === normRequestDate);
+    const hasSchedule = detail && detail.originalId;
+    const hasAttendance = detail && detail.wifiTime && detail.wifiTime.trim() !== "" && detail.wifiTime !== "-";
+
+    // 삭제 요청 시 등록 시간과 기록 시간이 모두 있으면 둘 다 삭제 요청
+    if (requestType === "삭제" && hasSchedule && hasAttendance) {
+      // 둘 다 삭제 요청을 보냄
+      try {
+        setLoading(true);
+        const headers = await getAuthHeader();
+        const authHeaders = headers && "Authorization" in headers ? (headers as Record<string, string>) : undefined;
+
+        // 1. 등록 시간 삭제 요청
+        let scheduleId = detail.originalId ?? (detail as any)?.scheduleId;
+        if (!scheduleId && currentStoreId) {
+          try {
+            const d = new Date(normRequestDate);
+            const weekStart = new Date(d);
+            weekStart.setDate(d.getDate() - d.getDay());
+            const startDateStr = weekStart.toISOString().split("T")[0];
+            const res = await api.get("/api/v1/schedules/weekly", {
+              params: { storeId: currentStoreId, startDate: startDateStr },
+              headers: authHeaders,
+            });
+            const list = Array.isArray(res.data) ? res.data : res.data?.data ?? res.data?.list ?? [];
+            const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+            const dayName = dayNames[d.getDay()];
+            const dayItem = list.find((x: any) => String(x?.day).toUpperCase() === dayName);
+            if (dayItem?.workers) {
+              const myName = (userName || "").trim();
+              const me = dayItem.workers.find(
+                (w: any) => (String(w?.name ?? "").trim() === myName)
+              );
+              scheduleId = me?.scheduleId ?? me?.schedule_id ?? me?.id;
+            }
+          } catch (_) {}
+        }
+
+        // 2. 기록 시간 삭제 요청
+        let attendanceId: number | null = null;
+        try {
+          const [y, m] = normRequestDate.split("-").map(Number);
+          const res = await api.get("/api/v1/attendances/monthly", {
+            params: { userId: userId, year: y, month: m },
+            headers: authHeaders,
+          });
+          const payload = res.data?.data ?? res.data;
+          const list = Array.isArray(payload) ? payload : payload?.list ?? payload?.data ?? [];
+          const onDate = (item: any) => {
+            const d = item.date ?? item.workDate ?? item.attendanceDate ?? item.startTime;
+            if (!d) return false;
+            const str = typeof d === "string" ? d.slice(0, 10) : new Date(d).toISOString().slice(0, 10);
+            return normalizeDate(str) === normRequestDate;
+          };
+          const me = Array.isArray(list) ? list.find(onDate) : null;
+          attendanceId = me?.attendanceId ?? me?.attendance_id ?? me?.id ?? null;
+        } catch (e) {
+          console.error(e);
+        }
+
+        // 둘 다 삭제 요청 전송
+        const afterValue = "00:00~00:00";
+        const requests = [];
+        
+        if (scheduleId && scheduleId > 0) {
+          requests.push(
+            registerModification(
+              {
+                storeId: currentStoreId,
+                targetType: "SCHEDULE",
+                targetId: scheduleId,
+                requestType: "DELETE",
+                afterValue,
+                targetDate: requestDate,
+                reason: requestReason.trim(),
+              },
+              authHeaders
+            )
+          );
+        }
+
+        if (attendanceId && attendanceId > 0) {
+          requests.push(
+            registerModification(
+              {
+                storeId: currentStoreId,
+                targetType: "ATTENDANCE",
+                targetId: attendanceId,
+                requestType: "DELETE",
+                afterValue,
+                targetDate: requestDate,
+                reason: requestReason.trim(),
+              },
+              authHeaders
+            )
+          );
+        }
+
+        if (requests.length === 0) {
+          Alert.alert("알림", "삭제할 항목을 찾을 수 없습니다.");
+          return;
+        }
+
+        await Promise.all(requests);
+        Alert.alert("완료", "등록 시간과 기록 시간 삭제 요청이 전달되었습니다. 사장님 알림에 표시됩니다.");
+        setRequestModalVisible(false);
+        setRequestReason("");
+        setRequestStartTime("");
+        setRequestEndTime("");
+        return;
+      } catch (e: any) {
+        const status = e?.response?.status;
+        const data = e?.response?.data;
+        if (status === 401) {
+          Alert.alert("로그인 필요", data?.message ?? "로그인이 필요합니다.", [
+            { text: "확인", style: "cancel" },
+            { text: "로그인하기", onPress: () => router.replace("/(auth)/Login") },
+          ]);
+        } else {
+          const msg = data?.message ?? data?.error ?? e?.message ?? "요청 전송에 실패했습니다.";
+          Alert.alert("실패", String(msg));
+        }
+        return;
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // 기존 로직 (수정 요청 또는 하나만 있는 경우)
+    let targetId: number;
     if (targetType === "SCHEDULE") {
       let detail = workHistory.find((w) => normalizeDate(w.date) === normRequestDate);
       let sid = detail?.originalId ?? (detail as any)?.scheduleId;
@@ -463,13 +592,20 @@ const WorkerSchedule: React.FC = () => {
           const list = Array.isArray(res.data) ? res.data : res.data?.data ?? res.data?.list ?? [];
           const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
           const dayName = dayNames[d.getDay()];
-          const dayItem = list.find((x: any) => String(x?.day).toUpperCase() === dayName);
-          if (dayItem?.workers) {
-            const myName = (userName || "").trim();
-            const me = dayItem.workers.find(
-              (w: any) => (String(w?.name ?? "").trim() === myName)
+          const myName = (userName || "").trim();
+          // ✅ 같은 요일의 모든 슬롯에서 내 이름을 가진 worker를 찾기
+          const sameDayItems = list.filter(
+            (x: any) => String(x?.day).toUpperCase() === dayName,
+          );
+          for (const item of sameDayItems) {
+            const workers = item?.workers ?? [];
+            const me = workers.find(
+              (w: any) => String(w?.name ?? "").trim() === myName,
             );
-            sid = me?.scheduleId ?? me?.schedule_id ?? me?.id;
+            if (me) {
+              sid = me.scheduleId ?? me.schedule_id ?? me.id;
+              break; // 첫 매칭만 사용
+            }
           }
         } catch (_) {}
       }
@@ -808,14 +944,47 @@ const WorkerSchedule: React.FC = () => {
             {/* 대상 선택 (기존 코드) */}
             <View style={styles.inputField}>
               <Text style={styles.inputLabel}>대상</Text>
-              <View style={styles.segmentRow}>
-                <TouchableOpacity style={[styles.segmentBtn, targetType === "SCHEDULE" && styles.segmentBtnActive]} onPress={() => setTargetType("SCHEDULE")}>
-                  <Text style={[styles.segmentText, targetType === "SCHEDULE" && styles.segmentTextActive]}>등록된 시간</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentBtn, targetType === "ATTENDANCE" && styles.segmentBtnActive]} onPress={() => setTargetType("ATTENDANCE")}>
-                  <Text style={[styles.segmentText, targetType === "ATTENDANCE" && styles.segmentTextActive]}>기록된 시간</Text>
-                </TouchableOpacity>
-              </View>
+              {requestType === "삭제" && (() => {
+                const detail = workHistory.find((w) => normalizeDate(w.date) === normalizeDate(requestDate));
+                const hasSchedule = !!(detail && detail.originalId);
+                const hasAttendance = !!(detail && detail.wifiTime && detail.wifiTime.trim() !== "" && detail.wifiTime !== "-");
+                const bothExist = hasSchedule && hasAttendance;
+                return (
+                  <>
+                    {bothExist && (
+                      <Text style={{ color: "#6B4EFF", fontSize: 12, marginBottom: 8, textAlign: "center" }}>
+                        등록 시간과 기록 시간이 모두 있어 둘 다 삭제 요청됩니다.
+                      </Text>
+                    )}
+                    <View style={styles.segmentRow}>
+                      <TouchableOpacity 
+                        style={[styles.segmentBtn, targetType === "SCHEDULE" && styles.segmentBtnActive, bothExist ? { opacity: 0.5 } : undefined]} 
+                        onPress={() => !bothExist && setTargetType("SCHEDULE")}
+                        disabled={bothExist}
+                      >
+                        <Text style={[styles.segmentText, targetType === "SCHEDULE" && styles.segmentTextActive]}>등록된 시간</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.segmentBtn, targetType === "ATTENDANCE" && styles.segmentBtnActive, bothExist ? { opacity: 0.5 } : undefined]} 
+                        onPress={() => !bothExist && setTargetType("ATTENDANCE")}
+                        disabled={bothExist}
+                      >
+                        <Text style={[styles.segmentText, targetType === "ATTENDANCE" && styles.segmentTextActive]}>기록된 시간</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                );
+              })()}
+              {requestType === "수정" && (
+                <View style={styles.segmentRow}>
+                  <TouchableOpacity style={[styles.segmentBtn, targetType === "SCHEDULE" && styles.segmentBtnActive]} onPress={() => setTargetType("SCHEDULE")}>
+                    <Text style={[styles.segmentText, targetType === "SCHEDULE" && styles.segmentTextActive]}>등록된 시간</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.segmentBtn, targetType === "ATTENDANCE" && styles.segmentBtnActive]} onPress={() => setTargetType("ATTENDANCE")}>
+                    <Text style={[styles.segmentText, targetType === "ATTENDANCE" && styles.segmentTextActive]}>기록된 시간</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
             {/* 날짜 선택 (기존 코드) */}
             <View style={styles.inputField}>

@@ -16,7 +16,7 @@ import {
 import type { BossNotificationItemData } from "../../../components/notification/BossData";
 import { BossNotificationItem } from "../../../components/notification/BossNotification";
 import api from "../../../constants/api";
-import { useSetUnreadNotification, useTriggerNotificationRefetch } from "../../../contexts/UnreadNotificationContext";
+import { useSetUnreadNotification, useTriggerNotificationRefetch, useTriggerScheduleRefetch } from "../../../contexts/UnreadNotificationContext";
 import {
   fetchModifications,
   updateModificationStatus,
@@ -27,13 +27,21 @@ import { styles } from "../../../styles/tabs/boss/Notification";
 import { formatAttendanceMessage, formatAttendanceMessageNoTime } from "../../../utils/notificationMessage";
 import { formatRelativeTime, getCategory, getSortTimestamp, parseDateForRelative } from "../../../utils/relativeTime";
 
-const BOSS_READ_KEYS_KEY = "boss_read_notification_keys";
+const BOSS_READ_KEYS_PREFIX = "boss_read_notification_keys";
+const BOSS_READ_KEYS_LEGACY = "boss_read_notification_keys";
 
-/** 출퇴근 시간 표시: ISO(UTC)면 로컬 HH:mm으로, "HH:mm" 형태면 그대로 */
+/** 사용자별 읽음 키 → 로그인 새로 해도 같은 사용자 읽음 유지 */
+function getBossReadKeysKey(username: string): string {
+  return username ? `${BOSS_READ_KEYS_PREFIX}_${username}` : BOSS_READ_KEYS_LEGACY;
+}
+
+/** 출퇴근 시간 표시. ISO(2025-01-31T15:00:00Z)는 문자열에서 HH:mm 추출(UTC→로컬 변환 시 15시가 0시로 잘못 나옴) */
 function formatTimeForDisplay(timeStr?: string): string {
   if (!timeStr || typeof timeStr !== "string") return "";
   const s = String(timeStr).trim();
   if (s.includes("T")) {
+    const match = s.match(/T(\d{1,2}):(\d{2})/);
+    if (match) return `${String(parseInt(match[1], 10)).padStart(2, "0")}:${match[2]}`;
     const date = parseDateForRelative(s);
     if (date) {
       const h = date.getHours();
@@ -44,45 +52,67 @@ function formatTimeForDisplay(timeStr?: string): string {
   return s.slice(0, 5);
 }
 
-/** 정정 요청 API 항목 → BossNotificationItemData (수정/삭제 구분). beforeValue는 API 또는 scheduleMap에서 채움 */
+/** 정정 요청 API 항목 → BossNotificationItemData (수정/삭제 구분). beforeValue는 API 또는 scheduleMap/attendanceMap에서 채움 */
 function mapToModificationItem(
   item: ModificationRequestItem,
-  scheduleTimeByTargetId?: Map<number, string>
+  scheduleTimeByTargetId?: Map<number, string>,
+  attendanceTimeByTargetId?: Map<number, string>
 ): BossNotificationItemData {
   const name = item.requesterName || "알바생";
-  const isDelete = item.requestType === "DELETE";
-  const typeLabel = item.targetType === "ATTENDANCE" ? "근무 시간" : "스케줄";
+  const reqType = String(item.requestType ?? (item as any).request_type ?? "").toUpperCase();
+  const isDelete = reqType === "DELETE";
+  const isRegister = reqType === "REGISTER";
+  const isRecordedTime = (item.targetType ?? (item as any).target_type ?? "").toString().toUpperCase() === "ATTENDANCE";
+  const typeLabel = isRecordedTime ? "근무 시간" : "스케줄";
+  const typeLabelForMessage = isRecordedTime ? "기록 시간" : "등록 시간";
   const afterValue = (item.afterValue ?? (item as any).after_value ?? "").trim();
-  let beforeValue = (
-    (item as any).beforeValue ??
-    (item as any).before_value ??
-    (item as any).originalValue ??
-    (item as any).original_value ??
-    (item as any).previousValue ??
-    (item as any).previous_value ??
-    (item as any).beforeTime ??
-    (item as any).before_time ??
-    (typeof (item as any).schedule === "object" && (item as any).schedule != null
-      ? ((item as any).schedule?.time ?? ((item as any).schedule?.startTime != null && (item as any).schedule?.endTime != null ? `${(item as any).schedule.startTime}~${(item as any).schedule.endTime}` : ""))
-      : "") ??
-    (typeof (item as any).target === "object" && (item as any).target != null
-      ? ((item as any).target?.time ?? ((item as any).target?.startTime != null && (item as any).target?.endTime != null ? `${(item as any).target.startTime}~${(item as any).target.endTime}` : ""))
-      : "") ??
-    ""
-  ).trim();
-  if (!beforeValue && scheduleTimeByTargetId != null) {
-    const tid = item.targetId ?? (item as any).target_id ?? (item as any).scheduleId ?? (item as any).schedule_id;
-    if (tid != null) beforeValue = (scheduleTimeByTargetId.get(Number(tid)) ?? "").trim();
+  const tid = item.targetId ?? (item as any).target_id ?? (item as any).scheduleId ?? (item as any).schedule_id;
+
+  let beforeValue = "";
+  // 기록 시간(ATTENDANCE): attendances/daily에서 조회한 실제 기록 시간 우선 — API의 target/schedule은 등록 시간(15~20)일 수 있음
+  if (isRecordedTime && attendanceTimeByTargetId != null && tid != null) {
+    beforeValue = (attendanceTimeByTargetId.get(Number(tid)) ?? "").trim();
+  }
+  // 등록 시간(SCHEDULE): scheduleTimeByTargetId 우선
+  if (!beforeValue && !isRecordedTime && scheduleTimeByTargetId != null && tid != null) {
+    beforeValue = (scheduleTimeByTargetId.get(Number(tid)) ?? "").trim();
+  }
+  // API fallback: beforeValue, target(출퇴근 기록이면 checkInTime/checkOutTime), schedule(등록만)
+  if (!beforeValue) {
+    beforeValue = (
+      (item as any).beforeValue ??
+      (item as any).before_value ??
+      (item as any).originalValue ??
+      (item as any).original_value ??
+      (item as any).previousValue ??
+      (item as any).previous_value ??
+      (item as any).beforeTime ??
+      (item as any).before_time ??
+      (typeof (item as any).target === "object" && (item as any).target != null
+        ? (() => {
+            const t = (item as any).target;
+            const st = t.startTime ?? t.checkInTime ?? t.start_time ?? t.check_in_time;
+            const et = t.endTime ?? t.checkOutTime ?? t.end_time ?? t.check_out_time;
+            if (st != null && et != null) return `${formatTimeForDisplay(st)}~${formatTimeForDisplay(et)}`;
+            return t?.time ?? "";
+          })()
+        : "") ??
+      (isRecordedTime ? "" : (typeof (item as any).schedule === "object" && (item as any).schedule != null
+        ? ((item as any).schedule?.time ?? ((item as any).schedule?.startTime != null && (item as any).schedule?.endTime != null ? `${(item as any).schedule.startTime}~${(item as any).schedule.endTime}` : ""))
+        : "")) ??
+      ""
+    ).trim();
   }
   const reason = (item.reason ?? (item as any).reason ?? "").trim();
   const targetDate = item.targetDate ?? (item as any).target_date ?? "";
   const before = beforeValue || "-";
   const reqRecord = isDelete ? "기록 삭제" : (afterValue || "-");
   const dateLine = targetDate ? `근무 날짜: ${targetDate}` : "";
+  const reqTypeLabel = isDelete ? "삭제" : isRegister ? "등록" : "수정";
   const lines = [
-    isDelete ? `${name}님 삭제 요청이 들어왔습니다.` : `${name}님 수정 요청이 들어왔습니다.`,
+    `${name}님 ${typeLabelForMessage} ${reqTypeLabel} 요청이 들어왔습니다.`,
     ...(dateLine ? [dateLine] : []),
-    `${before} → ${reqRecord}`,
+    ...(isRegister ? [`등록 시간: ${reqRecord}`] : [`${before} → ${reqRecord}`]),
     `사유: ${reason || "-"}`,
   ];
   const message = lines.join("\n");
@@ -95,15 +125,18 @@ function mapToModificationItem(
   // 날짜만/자정이면 UTC 자정으로 해석돼 "9시간 전" 나옴 → 현재 시각 사용
   const sortAtRaw = timeSource?.trim() || new Date().toISOString();
   const sortAt = sortAtRaw && isMidnightOrDateOnly(sortAtRaw) ? new Date().toISOString() : sortAtRaw;
+  const status = String(item.status ?? "").toUpperCase();
+  const isResolved = status === "APPROVED" || status === "REJECTED";
   return {
     id: item.requestId,
     icon: "⏰",
-    name: isDelete ? "삭제 요청" : "수정 요청",
+    name: isDelete ? "삭제 요청" : isRegister ? "등록 요청" : "수정 요청",
     message,
     time: formatRelativeTime(sortAt),
     category: getCategory(sortAt),
     isRead: false,
-    hasActions: true,
+    hasActions: !isResolved,
+    requestStatus: isResolved ? (status as "APPROVED" | "REJECTED") : undefined,
     sortAt,
     readKey: `mod-${item.requestId}`,
     beforeValue: beforeValue || undefined,
@@ -372,6 +405,7 @@ export default function BossNotificationScreen() {
   const [, setStoreId] = useState<number | null>(null);
   const setBossUnread = useSetUnreadNotification("boss");
   const triggerNotificationRefetch = useTriggerNotificationRefetch();
+  const triggerScheduleRefetch = useTriggerScheduleRefetch();
 
   const handleBack = () => {
     try {
@@ -419,8 +453,12 @@ export default function BossNotificationScreen() {
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
       const weekStart = getWeekStartDate();
-      const [modList, salaryRes, attendancesRes, storeRes, schedulesRes] = await Promise.all([
-        fetchModifications({ storeId: id, status: "PENDING" }, headers).catch(() => []),
+      const [modLists, salaryRes, attendancesRes, storeRes, schedulesRes] = await Promise.all([
+        Promise.all([
+          fetchModifications({ storeId: id, status: "PENDING" }, headers).catch(() => []),
+          fetchModifications({ storeId: id, status: "APPROVED" }, headers).catch(() => []),
+          fetchModifications({ storeId: id, status: "REJECTED" }, headers).catch(() => []),
+        ]).then(([p, a, r]) => [...(p || []), ...(a || []), ...(r || [])]),
         api.get("/api/v1/salary/monthly", {
           params: { storeId: id, year, month },
           headers,
@@ -456,7 +494,7 @@ export default function BossNotificationScreen() {
         return sun.toISOString().split("T")[0];
       };
       const weekStartsNeeded = new Set<string>([weekStart]);
-      for (const m of modList as any[]) {
+      for (const m of modLists as any[]) {
         if (m?.targetType === "SCHEDULE" || m?.target_type === "SCHEDULE") {
           const td = m?.targetDate ?? m?.target_date ?? "";
           if (td) weekStartsNeeded.add(getWeekStartForDate(td));
@@ -526,7 +564,40 @@ export default function BossNotificationScreen() {
           if (sid != null && tSlot) scheduleTimeByTargetId.set(Number(sid), tSlot);
         }
       }
-      const modificationItems = modList.map((m) => mapToModificationItem(m, scheduleTimeByTargetId));
+
+      // 기록 시간(ATTENDANCE) 수정 요청: targetDate별 출퇴근 조회 → 실제 기록 시간(13:59~16:41) 표시 (등록 시간 15~20 아님)
+      const attendanceTimeByTargetId = new Map<number, string>();
+      const attTargetDates = [...new Set(
+        (modLists as any[])
+          .filter((m: any) => (m?.targetType ?? m?.target_type ?? "").toString().toUpperCase() === "ATTENDANCE")
+          .map((m: any) => (m?.targetDate ?? m?.target_date ?? "").toString().trim())
+          .filter(Boolean)
+      )];
+      for (const dateStr of attTargetDates) {
+        try {
+          const res = await api.get("/api/v1/attendances/daily", {
+            params: { storeId: id, date: dateStr },
+            headers,
+          });
+          const rawList =
+            res?.data?.data?.list ?? res?.data?.data ?? res?.data?.list ?? res?.data?.attendances ??
+            (Array.isArray(res?.data) ? res.data : []);
+          const list = Array.isArray(rawList) ? rawList : rawList?.list ?? rawList?.attendances ?? rawList?.items ?? [];
+          for (const a of Array.isArray(list) ? list : []) {
+            const aid = a?.id ?? a?.attendanceId ?? a?.attendance_id;
+            const st = a?.startTime ?? a?.checkInTime ?? a?.start_time ?? a?.check_in_time;
+            const et = a?.endTime ?? a?.checkOutTime ?? a?.end_time ?? a?.check_out_time;
+            if (aid != null && st != null && et != null) {
+              const timeStr = `${formatTimeForDisplay(st)}~${formatTimeForDisplay(et)}`;
+              attendanceTimeByTargetId.set(Number(aid), timeStr);
+            }
+          }
+        } catch (_) {}
+      }
+
+      const modificationItems = (modLists as any[]).map((m) =>
+        mapToModificationItem(m, scheduleTimeByTargetId, attendanceTimeByTargetId)
+      );
 
       const paydayItems: BossNotificationItemData[] = [];
       const storeData = storeRes.data?.data ?? storeRes.data;
@@ -575,8 +646,15 @@ export default function BossNotificationScreen() {
       // 최신 알림이 상단에 오도록 정렬
       combined.sort((a, b) => getSortTimestamp(b.sortAt) - getSortTimestamp(a.sortAt));
       try {
-        const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
-        const readKeys: string[] = raw ? JSON.parse(raw) : [];
+        const raw = await AsyncStorage.getItem(getBossReadKeysKey(username));
+        let readKeys: string[] = raw ? JSON.parse(raw) : [];
+        if (readKeys.length === 0) {
+          const legacyRaw = await AsyncStorage.getItem(BOSS_READ_KEYS_LEGACY);
+          if (legacyRaw) {
+            readKeys = JSON.parse(legacyRaw);
+            await AsyncStorage.setItem(getBossReadKeysKey(username), JSON.stringify(readKeys));
+          }
+        }
         const readSet = new Set(readKeys);
         // 예전 형식 salary-req-123-2025-01-31... 도 새 형식 salary-req-123 과 매칭되도록 추가
         readKeys.forEach((k) => {
@@ -616,11 +694,13 @@ export default function BossNotificationScreen() {
     );
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
+        const username = await AsyncStorage.getItem("username") ?? "";
+        const key = getBossReadKeysKey(username);
+        const raw = await AsyncStorage.getItem(key);
         const readKeys: string[] = raw ? JSON.parse(raw) : [];
         if (!readKeys.includes(readKey)) {
           readKeys.push(readKey);
-          await AsyncStorage.setItem(BOSS_READ_KEYS_KEY, JSON.stringify(readKeys));
+          await AsyncStorage.setItem(key, JSON.stringify(readKeys));
         }
       } catch (_) {}
     })();
@@ -636,10 +716,12 @@ export default function BossNotificationScreen() {
       triggerNotificationRefetch();
     } catch (_) {}
     try {
-      const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
+      const username = await AsyncStorage.getItem("username") ?? "";
+      const key = getBossReadKeysKey(username);
+      const raw = await AsyncStorage.getItem(key);
       const existing: string[] = raw ? JSON.parse(raw) : [];
       const set = new Set([...existing, ...readKeys]);
-      await AsyncStorage.setItem(BOSS_READ_KEYS_KEY, JSON.stringify([...set]));
+      await AsyncStorage.setItem(key, JSON.stringify([...set]));
     } catch (_) {}
   };
 
@@ -648,7 +730,10 @@ export default function BossNotificationScreen() {
     try {
       const headers = await getAuthHeader();
       await updateModificationStatus(id, { status: "APPROVED" }, headers);
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, hasActions: false, requestStatus: "APPROVED" as const } : n))
+      );
+      triggerScheduleRefetch(); // 기록 수정 승인 → 출퇴근 페이지 즉시 갱신 (14:07→14:00 등)
       Alert.alert("승인 완료", "알바생에게 수정 요청 승인 알림을 보냈습니다.");
     } catch (e: any) {
       const status = e?.response?.status;
@@ -683,6 +768,7 @@ export default function BossNotificationScreen() {
             setNotifications((prev) =>
               prev.map((n) => (n.id === id ? { ...n, hasActions: false, requestStatus: "REJECTED" as const } : n))
             );
+            triggerNotificationRefetch();
             Alert.alert("거절 완료", "요청을 거절했습니다.");
           } catch (e: any) {
             const status = e?.response?.status;
