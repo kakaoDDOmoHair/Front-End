@@ -4,15 +4,15 @@ import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // 👇 공통 컴포넌트
@@ -22,8 +22,8 @@ import { useNotificationCount } from "../../../hooks/useNotificationCount";
 
 // 👇 대시보드 내부 컴포넌트 & 데이터
 import {
-    ScheduleCard,
-    WorkerCard,
+  ScheduleCard,
+  WorkerCard,
 } from "../../../components/dashboard/BossDashboard";
 import api from "../../../constants/api";
 import { styles } from "../../../styles/tabs/boss/Dashboard";
@@ -778,8 +778,7 @@ export default function DashboardScreen() {
             style={styles.manualButton}
             activeOpacity={0.7}
             onPress={() => {
-              const userType = pathname.includes("/staff") ? "staff" : "boss";
-              router.push(`/(tabs)/${userType}/Manual`);
+              router.push(`/(tabs)/boss/Manual`);
             }}
           >
             <Text style={styles.manualButtonText}>매뉴얼 등록하기</Text>

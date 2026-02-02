@@ -5,15 +5,15 @@ import * as Network from "expo-network";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import Footer from "../../../components/common/Footer";
@@ -1298,7 +1298,17 @@ export default function DashboardScreen() {
                 반갑습니다, <Text style={styles.greetingName}>{userName}</Text> 님!👋
               </Text>
             </View>
-
+            <View style={styles.inviteRow}>
+              <TouchableOpacity
+                style={styles.manualButton}
+                activeOpacity={0.7}
+                onPress={() => {
+                  router.push("/(tabs)/staff/Manual");
+                }}
+              >
+                <Text style={styles.manualButtonText}>매뉴얼 보기</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>이번 달 받을 월급은?</Text>
               <Text style={styles.salaryPeriod}>
