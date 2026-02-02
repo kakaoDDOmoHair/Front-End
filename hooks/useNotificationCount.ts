@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, usePathname } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useCallback, useContext, useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState, AppStateStatus, Platform } from "react-native";
 import api from "../constants/api";
 import { UnreadNotificationContext } from "../contexts/UnreadNotificationContext";
 
@@ -28,6 +28,7 @@ async function getStoredToken(): Promise<string | null> {
 export function useNotificationCount(_role: "staff" | "boss"): number {
   const [count, setCount] = useState(0);
   const refetchTrigger = useContext(UnreadNotificationContext)?.refetchTrigger ?? 0;
+  const pathname = usePathname();
 
   const loadCount = useCallback(async () => {
     try {
@@ -36,24 +37,31 @@ export function useNotificationCount(_role: "staff" | "boss"): number {
         setCount(0);
         return;
       }
-      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
-      const res = await api.get<{ status?: string; data?: { count?: number } }>(
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      };
+      const res = await api.get<{ status?: string; data?: { count?: number }; count?: number }>(
         "/api/v1/notifications/unread-count",
-        { headers }
+        { headers, params: { _t: Date.now() } }
       ).catch(() => null);
       const raw = res?.data;
       const n = raw?.data?.count ?? raw?.count ?? 0;
-      setCount(Number(n) || 0);
-      if (__DEV__) console.log("[useNotificationCount] unread-count:", Number(n) || 0);
+      const num = typeof n === "number" && Number.isFinite(n) ? n : parseInt(String(n), 10);
+      const value = Number.isFinite(num) && num >= 0 ? num : 0;
+      setCount(value);
+      if (__DEV__) console.log("[useNotificationCount] unread-count:", value);
     } catch (e) {
       if (__DEV__) console.warn("[useNotificationCount] loadCount 실패", e);
       setCount(0);
     }
   }, []);
 
+  // 로그인 후 refetchTrigger 변경 시, 페이지 이동(pathname) 시마다 갱신
   useEffect(() => {
     loadCount();
-  }, [loadCount, refetchTrigger]);
+  }, [loadCount, refetchTrigger, pathname]);
 
   useFocusEffect(
     useCallback(() => {
@@ -61,10 +69,23 @@ export function useNotificationCount(_role: "staff" | "boss"): number {
     }, [loadCount])
   );
 
+  // 앱이 포그라운드로 돌아올 때 즉시 갱신 (다른 탭/앱 갔다 와도 숫자 반영)
+  const appState = useRef(AppState.currentState);
   useEffect(() => {
-    const interval = setInterval(loadCount, 15000);
+    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && next === "active") {
+        loadCount();
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
+  }, [loadCount]);
+
+  // 헤더 알림 개수 짧은 간격으로 갱신 (3초 — 실시간에 가깝게)
+  useEffect(() => {
+    const interval = setInterval(loadCount, 3000);
     return () => clearInterval(interval);
   }, [loadCount]);
 
-  return count;
+  return typeof count === "number" && Number.isFinite(count) && count >= 0 ? count : 0;
 }

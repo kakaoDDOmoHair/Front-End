@@ -16,7 +16,14 @@ const Header: React.FC<HeaderProps> = (props) => {
   const userType = pathname.includes("/staff") ? "staff" : "boss";
   const apiCount = useNotificationCount(userType);
   const contextUnread = useUnreadNotification(userType);
-  const notificationCount = contextUnread !== null ? contextUnread : (props.notificationCount ?? apiCount);
+  const isOnNotificationPage = pathname?.includes("/Notification") ?? false;
+  // 알바생: 알림 페이지에 있을 때만 context, 그 외에는 API 폴링. 사장님: API가 0을 줄 수 있어서 context에 값이 있으면 우선 사용(한 번이라도 알림 페이지 열면 배지 반영)
+  const notificationCount =
+    userType === "boss" && contextUnread !== null
+      ? contextUnread
+      : isOnNotificationPage && contextUnread !== null
+        ? contextUnread
+        : (props.notificationCount ?? apiCount);
 
   return (
     <View style={styles.header}>

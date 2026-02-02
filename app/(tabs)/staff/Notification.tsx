@@ -24,7 +24,17 @@ import {
   type BackendNotificationItem,
 } from "../../../services/notificationApi";
 import { styles } from "../../../styles/tabs/staff/Notification";
-import { formatRelativeTime, getCategory, parseDateForRelative } from "../../../utils/relativeTime";
+import { formatStaffAttendanceMessage } from "../../../utils/notificationMessage";
+import { formatRelativeTime, getCategory, getSortTimestamp, parseDateForRelative } from "../../../utils/relativeTime";
+
+/** 회원가입 이전·과거 알림 제외: 최근 N일만 표시 (정렬/표시 일치) */
+const NOTIFICATION_MAX_AGE_DAYS = 90;
+const NOTIFICATION_MAX_AGE_MS = NOTIFICATION_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+
+function filterRecentOnly<T extends { sortAt?: string | number }>(items: T[]): T[] {
+  const cutoff = Date.now() - NOTIFICATION_MAX_AGE_MS;
+  return items.filter((n) => getSortTimestamp(n.sortAt) >= cutoff);
+}
 
 /** 출퇴근 시간 표시: ISO(UTC)면 로컬 HH:mm으로, "HH:mm" 형태면 그대로 */
 function formatTimeForDisplay(timeStr?: string): string {
@@ -52,12 +62,28 @@ function typeToIcon(type?: string): string {
   return "🔔";
 }
 
+/** 출퇴근 알림인지 여부 (메시지에 UTC (HH:mm)가 들어가 로컬 시간으로 바꿔야 할 때) */
+function isAttendanceBackendNotification(n: BackendNotificationItem): boolean {
+  const type = (n.type || "").toUpperCase();
+  if (type === "ATTENDANCE") return true;
+  const msg = (n.message || "") + (n.title || "");
+  return /출석|출근|퇴근|체크\s*완료/.test(msg);
+}
+
+/** 백엔드 알림 → 표시 시간·정렬 모두 createdAt 기준. 출퇴근 알림은 메시지 안 (HH:mm)을 로컬 시각으로 치환 */
 function mapBackendToItem(n: BackendNotificationItem): NotificationItemData {
+  let message = n.message || "";
+  if (isAttendanceBackendNotification(n) && n.createdAt) {
+    const localTime = formatTimeForDisplay(n.createdAt);
+    if (localTime) {
+      message = message.replace(/\(\d{1,2}:\d{2}\)/, `(${localTime})`);
+    }
+  }
   return {
     id: n.id,
     icon: typeToIcon(n.type),
     name: n.title || "알림",
-    message: n.message,
+    message,
     time: formatRelativeTime(n.createdAt),
     category: getCategory(n.createdAt),
     isRead: n.isRead,
@@ -117,15 +143,24 @@ export default function StaffNotificationScreen() {
       const backendList = await fetchNotifications(headers);
       const staffList = backendList.filter((n) => !isBossOnlyNotification(n));
       if (staffList.length > 0) {
-        const items = staffList.map(mapBackendToItem);
-        // 최신순(위) 정렬
-        items.sort((a, b) => {
-          const ta = a.sortAt ? new Date(a.sortAt).getTime() : 0;
-          const tb = b.sortAt ? new Date(b.sortAt).getTime() : 0;
-          return tb - ta;
-        });
-        setNotifications(items);
-        const unreadCount = items.filter((n) => !n.isRead).length;
+        let list = staffList;
+        const meRes = await api.get("/api/v1/users/me", { params: { username }, headers }).catch(() => null);
+        const me = meRes?.data?.data ?? meRes?.data;
+        const myUserId = me?.userId ?? me?.id;
+        // 본인 알림만: userId 있으면 본인 것만, 없으면(공통 알림) 유지. 다른 알바생 출퇴근 알림 제거
+        if (myUserId != null) {
+          list = list.filter((n: any) => {
+            const nUid = n.userId ?? n.user_id;
+            if (nUid == null) return true;
+            return Number(nUid) === Number(myUserId);
+          });
+        }
+        const items = list.map(mapBackendToItem);
+        // 최신 알림이 상단에 오도록 정렬
+        items.sort((a, b) => getSortTimestamp(b.sortAt) - getSortTimestamp(a.sortAt));
+        const recentItems = filterRecentOnly(items);
+        setNotifications(recentItems);
+        const unreadCount = recentItems.filter((n) => !n.isRead).length;
         setStaffUnread(unreadCount);
         triggerNotificationRefetch();
         setUseBackendList(true);
@@ -227,41 +262,56 @@ export default function StaffNotificationScreen() {
         });
       }
 
+      // GET /api/v1/attendances/monthly: 본인 userId로 호출. 백엔드가 다른 유저 데이터를 섞어 보낼 수 있으므로 본인 것만 필터
       const attPayload = attRes.data?.data ?? attRes.data;
-      const attList = Array.isArray(attPayload) ? attPayload : attPayload?.list ?? attPayload?.data ?? [];
+      const attListRaw = Array.isArray(attPayload) ? attPayload : attPayload?.list ?? attPayload?.data ?? [];
+      const attList = attListRaw.filter(
+        (a: any) => (a.userId ?? a.user_id) == null || Number(a.userId ?? a.user_id) === uid,
+      );
+      const attCutoff = Date.now() - NOTIFICATION_MAX_AGE_MS;
+      const seenAttKeys = new Set<string>();
       for (const a of attList) {
         const startTime = a.startTime ?? a.checkInTime;
         const endTime = a.endTime ?? a.checkOutTime;
         const totalHours = a.totalHours;
-        if (startTime) {
-          const timePart = formatTimeForDisplay(startTime);
-          const isLate = String(a?.status ?? "").toUpperCase() === "LATE";
-          items.push({
-            id: idGen++,
-            icon: "⏰",
-            name: "출근",
-            message: isLate ? `(${timePart}) 지각 출근했습니다.` : `(${timePart}) 출근했습니다.`,
-            time: formatRelativeTime(startTime),
-            category: getCategory(startTime),
-            isRead: false,
-            sortAt: startTime || new Date().toISOString(),
-            readKey: `att-in-${uid}-${startTime}`,
-          });
+        const startSort = getSortTimestamp(startTime);
+        const endSort = getSortTimestamp(endTime);
+        if (startTime && startSort >= attCutoff) {
+          const readKeyIn = `att-in-${uid}-${startTime}`;
+          if (!seenAttKeys.has(readKeyIn)) {
+            seenAttKeys.add(readKeyIn);
+            const timePart = formatTimeForDisplay(startTime);
+            const isLate = String(a?.status ?? "").toUpperCase() === "LATE";
+            items.push({
+              id: idGen++,
+              icon: "⏰",
+              name: "출근",
+              message: formatStaffAttendanceMessage("in", timePart, { isLate }),
+              time: formatRelativeTime(startTime),
+              category: getCategory(startTime),
+              isRead: false,
+              sortAt: startTime || new Date().toISOString(),
+              readKey: readKeyIn,
+            });
+          }
         }
-        if (endTime) {
-          const timePart = formatTimeForDisplay(endTime);
-          const hoursText = totalHours != null ? ` 총 ${Math.round(totalHours * 10) / 10}시간 근무했습니다.` : "";
-          items.push({
-            id: idGen++,
-            icon: "🏠",
-            name: "퇴근",
-            message: `(${timePart}) 퇴근했습니다.${hoursText}`,
-            time: formatRelativeTime(endTime),
-            category: getCategory(endTime),
-            isRead: false,
-            sortAt: endTime || new Date().toISOString(),
-            readKey: `att-out-${uid}-${endTime}`,
-          });
+        if (endTime && endSort >= attCutoff) {
+          const readKeyOut = `att-out-${uid}-${endTime}`;
+          if (!seenAttKeys.has(readKeyOut)) {
+            seenAttKeys.add(readKeyOut);
+            const timePart = formatTimeForDisplay(endTime);
+            items.push({
+              id: idGen++,
+              icon: "🏠",
+              name: "퇴근",
+              message: formatStaffAttendanceMessage("out", timePart, { totalHours: totalHours ?? undefined }),
+              time: formatRelativeTime(endTime),
+              category: getCategory(endTime),
+              isRead: false,
+              sortAt: endTime || new Date().toISOString(),
+              readKey: readKeyOut,
+            });
+          }
         }
       }
 
@@ -293,22 +343,19 @@ export default function StaffNotificationScreen() {
         });
       });
 
-      // 최신순(위) → 오래된 순(아래) 시간순 정렬
-      items.sort((a, b) => {
-        const ta = a.sortAt ? new Date(a.sortAt).getTime() : 0;
-        const tb = b.sortAt ? new Date(b.sortAt).getTime() : 0;
-        return tb - ta;
-      });
+      // 최신 알림이 상단에 오도록 정렬
+      items.sort((a, b) => getSortTimestamp(b.sortAt) - getSortTimestamp(a.sortAt));
+      const recentItems = filterRecentOnly(items);
       try {
         const raw = await AsyncStorage.getItem(STAFF_READ_KEYS_KEY);
         const readKeys: string[] = raw ? JSON.parse(raw) : [];
         const readSet = new Set(readKeys);
-        items.forEach((n) => {
+        recentItems.forEach((n) => {
           if (n.readKey && readSet.has(n.readKey)) n.isRead = true;
         });
       } catch (_) {}
-      setNotifications(items);
-      const unreadCount = items.filter((n) => !n.isRead).length;
+      setNotifications(recentItems);
+      const unreadCount = recentItems.filter((n) => !n.isRead).length;
       setStaffUnread(unreadCount);
       triggerNotificationRefetch();
     } catch (e) {

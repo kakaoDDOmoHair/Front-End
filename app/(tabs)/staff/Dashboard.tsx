@@ -5,15 +5,15 @@ import * as Network from "expo-network";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 import Footer from "../../../components/common/Footer";
@@ -1079,13 +1079,15 @@ export default function DashboardScreen() {
       }
 
       if (!isWorking) {
-        // 출근
+        // 출근 — 실제 버튼 누른 시각을 clockedAt(UTC ISO)로 전달해 기록이 그 시각으로 저장되도록 함
+        const clockedAt = new Date().toISOString();
         const response = await api.post("/api/v1/attendances/clock-in", {
           storeId: currentStoreId,
           userId,
           lat: loc.coords.latitude,
           lon: loc.coords.longitude,
           wifiBssid: bssid || ssid || "",
+          clockedAt,
         });
 
         const newId = extractAttendanceIdFromResponse(response?.data);
@@ -1159,6 +1161,8 @@ export default function DashboardScreen() {
           );
         }
 
+        // 퇴근 — 실제 버튼 누른 시각을 clockedAt(UTC ISO)로 전달해 기록이 그 시각으로 저장되도록 함
+        const clockedAt = new Date().toISOString();
         await api.post("/api/v1/attendances/clock-out", {
           attendanceId: aid,
           attendance_id: aid,
@@ -1166,6 +1170,7 @@ export default function DashboardScreen() {
           storeId: currentStoreId,
           lat: loc.coords.latitude,
           lon: loc.coords.longitude,
+          clockedAt,
         });
 
         if (localSessionStart != null && localSessionBaseHours != null) {

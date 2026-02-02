@@ -24,7 +24,8 @@ import {
 } from "../../../services/modificationApi";
 import { markAllNotificationsRead } from "../../../services/notificationApi";
 import { styles } from "../../../styles/tabs/boss/Notification";
-import { formatRelativeTime, getCategory, parseDateForRelative } from "../../../utils/relativeTime";
+import { formatAttendanceMessage, formatAttendanceMessageNoTime } from "../../../utils/notificationMessage";
+import { formatRelativeTime, getCategory, getSortTimestamp, parseDateForRelative } from "../../../utils/relativeTime";
 
 const BOSS_READ_KEYS_KEY = "boss_read_notification_keys";
 
@@ -85,18 +86,22 @@ function mapToModificationItem(
     `사유: ${reason || "-"}`,
   ];
   const message = lines.join("\n");
-  // 수락/거절한 시각(updatedAt)이 있으면 그걸로 표시 → 방금 처리한 건 '방금 전'으로 보이게
-  const timeSource = (item.status === "APPROVED" || item.status === "REJECTED") && item.updatedAt
-    ? item.updatedAt
-    : item.createdAt;
-  const sortAt = timeSource || new Date().toISOString();
+  // 수정 요청 API: createdAt/updatedAt을 camel·snake 둘 다 읽기 (백엔드가 KST +09:00 문자열로 내려줌)
+  const rawCreated = (item.createdAt ?? (item as any).created_at) as string | undefined;
+  const rawUpdated = (item.updatedAt ?? (item as any).updated_at) as string | undefined;
+  const timeSource = (item.status === "APPROVED" || item.status === "REJECTED") && rawUpdated
+    ? rawUpdated
+    : rawCreated;
+  // 날짜만/자정이면 UTC 자정으로 해석돼 "9시간 전" 나옴 → 현재 시각 사용
+  const sortAtRaw = timeSource?.trim() || new Date().toISOString();
+  const sortAt = sortAtRaw && isMidnightOrDateOnly(sortAtRaw) ? new Date().toISOString() : sortAtRaw;
   return {
     id: item.requestId,
     icon: "⏰",
     name: isDelete ? "삭제 요청" : "수정 요청",
     message,
-    time: formatRelativeTime(timeSource ?? sortAt),
-    category: getCategory(timeSource ?? sortAt),
+    time: formatRelativeTime(sortAt),
+    category: getCategory(sortAt),
     isRead: false,
     hasActions: true,
     sortAt,
@@ -108,10 +113,45 @@ function mapToModificationItem(
   };
 }
 
-/** 급여 정산 요청(REQUESTED) → BossNotificationItemData (id는 1000000+userId로 정정 요청과 구분) */
-function mapSalaryRequestToItem(worker: { userId: number; name?: string; requestedAt?: string }): BossNotificationItemData {
-  const workerName = worker.name || "알바생";
-  const sortAt = (worker as any).requestedAt ?? (worker as any).createdAt ?? new Date().toISOString();
+/** 정산 알림 전용: 타임존 없을 때 UTC로 해석해 "9시간 전" 오표기 방지. (백엔드가 UTC로 보내고 Z 누락 시 사용) */
+function normalizeSalarySortAt(raw: string): string {
+  const s = String(raw).trim();
+  if (!s) return s;
+  if (/[Zz]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return `${s.replace(/\.\d{3}$/, "").replace(/Z$/i, "")}Z`;
+  return s;
+}
+
+/** 날짜만 또는 자정(오프셋 없음/Z)이면 '정확한 요청 시각'이 아님 → 현재 시각으로 표시해 "9시간 전" 방지 */
+function isMidnightOrDateOnly(s: string): boolean {
+  const t = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return true;
+  if (/T00:00:00(\.000)?([Zz])?$/.test(t) || /T00:00(\.000)?([Zz])?$/.test(t)) return true;
+  return false;
+}
+
+/** 급여 정산 요청(REQUESTED) → BossNotificationItemData. GET /api/v1/salary/monthly 의 requestedAt(= 요청 보낸 시각, KST ISO) → "N분 전" 표시 */
+function mapSalaryRequestToItem(worker: { userId: number; name?: string; requestedAt?: string | null }): BossNotificationItemData {
+  const w = worker as Record<string, unknown>;
+  const workerName = (worker.name as string) || "알바생";
+  // requestedAt / requested_at 이 정식 필드. 없을 때만 다른 필드 fallback
+  const rawSortAt =
+    (w.requestedAt as string) ??
+    (w.requested_at as string) ??
+    (w.createdAt as string) ??
+    (w.created_at as string) ??
+    (w.requestDate as string) ??
+    (w.updatedAt as string) ??
+    (w.updated_at as string) ??
+    (w.date as string);
+  let sortAtRaw =
+    rawSortAt && String(rawSortAt).trim()
+      ? String(rawSortAt).trim()
+      : new Date().toISOString();
+  // 날짜만/자정이면 UTC 자정으로 해석돼 "9시간 전" 나옴 → 현재 시각 사용
+  if (sortAtRaw && isMidnightOrDateOnly(sortAtRaw)) sortAtRaw = new Date().toISOString();
+  const sortAt = sortAtRaw ? normalizeSalarySortAt(sortAtRaw) : sortAtRaw;
+  // readKey는 새로고침 후에도 읽음 유지되도록 타임스탬프 제외 (salary-req-{userId}만 사용)
   return {
     id: 1000000 + worker.userId,
     icon: "💰",
@@ -122,7 +162,7 @@ function mapSalaryRequestToItem(worker: { userId: number; name?: string; request
     isRead: false,
     hasActions: false,
     sortAt,
-    readKey: `salary-req-${worker.userId}-${sortAt}`,
+    readKey: `salary-req-${worker.userId}`,
   };
 }
 
@@ -146,9 +186,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         id: idBase++,
         icon: isLate ? "⚠️" : "⏰",
         name: isLate ? "지각" : "출근",
-        message: isLate
-          ? `${name}님이 (${timePart}) 지각 출근했습니다.`
-          : `${name}님이 (${timePart}) 출근했습니다.`,
+        message: formatAttendanceMessage("in", timePart, { isLate, namePrefix: `${name}님이 ` }),
         time: formatRelativeTime(startTime),
         category: getCategory(startTime),
         isRead: false,
@@ -162,9 +200,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         id: idBase++,
         icon: status === "LATE" ? "⚠️" : "⏰",
         name: status === "LATE" ? "지각" : "출근",
-        message: status === "LATE"
-          ? `${name}님이 지각 출근했습니다.`
-          : `${name}님이 출근했습니다.`,
+        message: formatAttendanceMessageNoTime("in", { isLate: status === "LATE", namePrefix: `${name}님이 ` }),
         time: formatRelativeTime(fallbackSortAt),
         category: "오늘",
         isRead: false,
@@ -175,12 +211,14 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
     }
     if (endTime) {
       const endTimePart = formatTimeForDisplay(endTime);
-      const hoursText = totalHours != null ? ` 총 ${Math.round(totalHours * 10) / 10}시간 근무했습니다.` : "";
       items.push({
         id: idBase++,
         icon: "🏠",
         name: "퇴근",
-        message: `${name}님이 (${endTimePart}) 퇴근했습니다.${hoursText}`,
+        message: formatAttendanceMessage("out", endTimePart, {
+          totalHours: totalHours ?? undefined,
+          namePrefix: `${name}님이 `,
+        }),
         time: formatRelativeTime(endTime),
         category: getCategory(endTime),
         isRead: false,
@@ -194,7 +232,7 @@ function mapAttendancesToItems(list: Array<Record<string, unknown> & { userId: n
         id: idBase++,
         icon: "🏠",
         name: "퇴근",
-        message: `${name}님이 퇴근했습니다.`,
+        message: formatAttendanceMessageNoTime("out", { namePrefix: `${name}님이 ` }),
         time: formatRelativeTime(fallbackSortAt),
         category: "오늘",
         isRead: false,
@@ -218,27 +256,58 @@ function getWeekStartDate(): string {
 
 const DAY_ORDER = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
-/** 주간 스케줄 → "OO님이 근무를 등록했습니다" 알림 (id: 5xxxxxx) */
+/** "2025-02-23", "2025/02/23", "2025-02-23T00:00:00" 등 → "YYYY-MM-DD" */
+function normalizeToYYYYMMDD(s: string): string {
+  const trimmed = String(s).trim();
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return trimmed;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** 알림에 보일 스케줄 기간: 등록 시각 기준 최근 90일 (이번주/다음주/이전주 무관) */
+const SCHEDULE_NOTIFICATION_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** 주간 스케줄 → "OO님이 근무를 등록했습니다" 알림 (id: 5xxxxxx). 이번주/다음주/이전주 무관하게 등록 시각(registeredAt) 기준 "N분 전" 표시 */
 function mapSchedulesToItems(
-  list: Array<Record<string, unknown> & { scheduleId?: number; workDate?: string; date?: string; day?: string; time?: string; startTime?: string; endTime?: string; createdAt?: string; created_at?: string; registeredAt?: string; updatedAt?: string; workers?: Array<{ name?: string }> }>,
+  list: Array<Record<string, unknown> & { scheduleId?: number; workDate?: string; date?: string; day?: string; weekStart?: string; startDate?: string; time?: string; startTime?: string; endTime?: string; createdAt?: string; created_at?: string; registeredAt?: string; updatedAt?: string; workers?: Array<{ name?: string; registeredAt?: string; created_at?: string }> }>,
   startDate: string
 ): BossNotificationItemData[] {
   const items: BossNotificationItemData[] = [];
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0];
+  const cutoff = new Date(now.getTime() - SCHEDULE_NOTIFICATION_AGE_MS);
   let idBase = 5000000;
   const seen = new Set<string>();
   for (const s of list) {
-    let workDate = s.workDate ?? s.date as string | undefined;
+    // 백엔드가 work_date, date, targetDate 등 다른 키로 내려줄 수 있음. workers[0]에만 있는 경우도 있음
+    let workDate =
+      (s.workDate ?? s.date ?? (s as any).work_date ?? (s as any).targetDate ?? (s as any).target_date ?? (s as any).scheduleDate ?? (s as any).schedule_date) as string | undefined;
+    if (!workDate && s.workers?.[0]) {
+      const w = (s.workers[0] as any);
+      workDate = (w.workDate ?? w.work_date ?? w.date ?? w.targetDate) as string | undefined;
+    }
+    if (workDate && typeof workDate === "string") {
+      workDate = normalizeToYYYYMMDD(workDate);
+    }
     if (!workDate && s.day) {
       const dayIndex = DAY_ORDER.indexOf(String(s.day).toUpperCase());
       if (dayIndex >= 0) {
-        const start = new Date(startDate);
+        // 해당 슬롯이 속한 주의 일요일 사용 (23일 등록이 2일로 잡히는 버그 방지)
+        const slotWeekStart = (s as any).weekStart ?? (s as any).startDate ?? startDate;
+        const start = new Date(slotWeekStart);
         start.setDate(start.getDate() + dayIndex);
         workDate = start.toISOString().split("T")[0];
       }
     }
-    const createdAt = (s.createdAt ?? s.created_at ?? s.registeredAt ?? s.updatedAt) as string | undefined;
+    // 등록 시각: 백엔드가 "알바생이 등록한 시간"으로 registeredAt(KST ISO) 내려줌 → 항상 이걸로 "N분 전" 표시
+    const slotRegistered = (s.registeredAt ?? (s as any).registered_at ?? s.createdAt ?? s.created_at ?? s.updatedAt) as string | undefined;
+    const workerRegistered = (s.workers && s.workers[0])
+      ? ((s.workers[0] as any).registeredAt ?? (s.workers[0] as any).registered_at ?? (s.workers[0] as any).createdAt ?? (s.workers[0] as any).created_at)
+      : undefined;
+    const createdAt = (slotRegistered ?? workerRegistered) as string | undefined;
     const timeStr = s.time ?? (s.startTime && s.endTime ? `${s.startTime}~${s.endTime}` : "");
     const workerName = (s.workers && s.workers[0]?.name) ? s.workers[0].name : "알바생";
     const dateLabel = workDate ? `${String(workDate).slice(5, 7)}월 ${String(workDate).slice(8, 10)}일` : "";
@@ -252,49 +321,42 @@ function mapSchedulesToItems(
     if (seen.has(key)) continue;
     seen.add(key);
     const readKeyBase = `sched-${workDate ?? ""}-${readKeyId}`;
+    // 이번주/다음주/이전주 무관하게 항상 "등록한 시간" 기준으로만 표시 (등록 시각이 있으면 그대로, 없거나 날짜만/자정이면 현재 시각 → "방금 전")
+    const nowIso = new Date().toISOString();
+    const sortAtForDisplay =
+      createdAt && !isMidnightOrDateOnly(createdAt)
+        ? createdAt
+        : nowIso;
     if (createdAt) {
       const parsed = parseDateForRelative(createdAt);
-      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-      if (parsed && parsed >= threeDaysAgo) {
+      if (parsed && parsed >= cutoff) {
         items.push({
           id: idBase++,
           icon: "📅",
           name: "스케줄",
           message: msg,
-          time: formatRelativeTime(createdAt),
-          category: getCategory(createdAt),
+          time: formatRelativeTime(sortAtForDisplay),
+          category: getCategory(sortAtForDisplay),
           isRead: false,
           hasActions: false,
-          sortAt: createdAt,
+          sortAt: sortAtForDisplay,
           readKey: readKeyBase,
         });
-      } else if (workDate && workDate >= todayStr) {
-        const fallbackSortAt = `${workDate}T00:00:00`;
-        items.push({
-          id: idBase++,
-          icon: "📅",
-          name: "스케줄",
-          message: msg,
-          time: formatRelativeTime(fallbackSortAt),
-          category: getCategory(workDate),
-          isRead: false,
-          hasActions: false,
-          sortAt: fallbackSortAt,
-          readKey: readKeyBase,
-        });
+        continue;
       }
-    } else if (workDate && workDate >= todayStr) {
-      const fallbackSortAt = `${workDate}T00:00:00`;
+    }
+    // 등록 시각 없음: 근무일이 오늘/미래일 때만 표시. 등록 시각을 모르므로 항상 현재 시각으로 "방금 전"
+    if (workDate && workDate >= todayStr) {
       items.push({
         id: idBase++,
         icon: "📅",
         name: "스케줄",
         message: msg,
-        time: formatRelativeTime(fallbackSortAt),
-        category: getCategory(workDate),
+        time: formatRelativeTime(nowIso),
+        category: getCategory(nowIso),
         isRead: false,
         hasActions: false,
-        sortAt: fallbackSortAt,
+        sortAt: nowIso,
         readKey: readKeyBase,
       });
     }
@@ -365,7 +427,7 @@ export default function BossNotificationScreen() {
         }),
         api.get("/api/v1/attendances/today", { params: { storeId: id }, headers }),
         api.get(`/api/v1/stores/${id}`, { headers }).catch(() => ({ data: {} })),
-        api.get("/api/v1/schedules/weekly", { params: { storeId: id, startDate: weekStart }, headers }).catch(() => ({ data: [] })),
+        api.get("/api/v1/schedules/weekly", { params: { storeId: id, startDate: weekStart, weeks: 52 }, headers }).catch(() => ({ data: [] })),
       ]);
       const dataRoot = salaryRes.data?.data ?? salaryRes.data;
       const workers = dataRoot?.payments ?? dataRoot?.workers ?? [];
@@ -382,7 +444,9 @@ export default function BossNotificationScreen() {
       const attendanceItems = mapAttendancesToItems(Array.isArray(attList) ? attList : []);
 
       const schedPayload = schedulesRes.data?.data ?? schedulesRes.data;
-      const schedListBase = Array.isArray(schedPayload) ? schedPayload : schedPayload?.list ?? schedPayload?.items ?? [];
+      const schedListBase = Array.isArray(schedPayload)
+        ? schedPayload
+        : (schedPayload?.list ?? schedPayload?.items ?? schedPayload?.weeks ?? []);
 
       const getWeekStartForDate = (dateStr: string) => {
         const d = new Date(dateStr);
@@ -413,7 +477,24 @@ export default function BossNotificationScreen() {
         }
       }
 
-      const scheduleItems = mapSchedulesToItems(schedListBase as Parameters<typeof mapSchedulesToItems>[0], weekStart);
+      // API가 주차별로 묶어서 내려주면(weekStart + schedules) 펼치고, 각 슬롯에 해당 주의 weekStart 부여 → 13일 등록이 6일로 나오는 버그 방지
+      const flattenedSchedules: Array<Record<string, unknown> & { weekStart?: string; startDate?: string }> = [];
+      for (const x of schedListForMap as any[]) {
+        if (Array.isArray(x?.schedules)) {
+          const ws = x.weekStart ?? x.startDate ?? weekStart;
+          for (const slot of x.schedules) {
+            flattenedSchedules.push({ ...slot, weekStart: slot.weekStart ?? slot.startDate ?? ws });
+          }
+        } else if (Array.isArray(x?.items)) {
+          const ws = x.weekStart ?? x.startDate ?? weekStart;
+          for (const slot of x.items) {
+            flattenedSchedules.push({ ...slot, weekStart: slot.weekStart ?? slot.startDate ?? ws });
+          }
+        } else {
+          flattenedSchedules.push({ ...x, weekStart: x.weekStart ?? x.startDate ?? weekStart });
+        }
+      }
+      const scheduleItems = mapSchedulesToItems(flattenedSchedules as Parameters<typeof mapSchedulesToItems>[0], weekStart);
 
       const scheduleTimeByTargetId = new Map<number, string>();
       const flatSched = (schedListForMap as any[]).flatMap((x: any) =>
@@ -491,15 +572,17 @@ export default function BossNotificationScreen() {
         });
       }
       const combined = [...modificationItems, ...salaryItems, ...attendanceItems, ...scheduleItems, ...paydayItems];
-      combined.sort((a, b) => {
-        const ta = a.sortAt ? new Date(a.sortAt).getTime() : 0;
-        const tb = b.sortAt ? new Date(b.sortAt).getTime() : 0;
-        return tb - ta;
-      });
+      // 최신 알림이 상단에 오도록 정렬
+      combined.sort((a, b) => getSortTimestamp(b.sortAt) - getSortTimestamp(a.sortAt));
       try {
         const raw = await AsyncStorage.getItem(BOSS_READ_KEYS_KEY);
         const readKeys: string[] = raw ? JSON.parse(raw) : [];
         const readSet = new Set(readKeys);
+        // 예전 형식 salary-req-123-2025-01-31... 도 새 형식 salary-req-123 과 매칭되도록 추가
+        readKeys.forEach((k) => {
+          const m = /^salary-req-(\d+)/.exec(k);
+          if (m) readSet.add(`salary-req-${m[1]}`);
+        });
         combined.forEach((n) => {
           if (n.readKey && readSet.has(n.readKey)) n.isRead = true;
         });
