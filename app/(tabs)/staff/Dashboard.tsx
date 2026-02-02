@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -1009,16 +1010,40 @@ export default function DashboardScreen() {
       const hasLocationInfo = storeInfo.lat !== 0 || storeInfo.lon !== 0;
       const hasStoreInfo = hasWifiInfo || hasLocationInfo;
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setIsLoading(false);
-        attendanceRequestRef.current = false;
-        return Alert.alert("권한 필요", "위치 권한을 허용해 주세요.");
-      }
+      const isAndroid = Platform.OS === "android";
+      const shouldUseWifiOnly = isAndroid && hasWifiInfo;
+      let lat = currentCoords?.lat ?? null;
+      let lon = currentCoords?.lon ?? null;
 
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
+      if (!shouldUseWifiOnly) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setIsLoading(false);
+          attendanceRequestRef.current = false;
+          return Alert.alert("권한 필요", "위치 권한을 허용해 주세요.");
+        }
+
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        lat = loc.coords.latitude;
+        lon = loc.coords.longitude;
+      } else {
+        try {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          lat = loc.coords.latitude;
+          lon = loc.coords.longitude;
+        } catch (e) {
+          // WiFi 기반 인증이므로 위치는 best-effort
+        }
+
+        if (lat == null || lon == null) {
+          lat = storeInfo.lat || 0;
+          lon = storeInfo.lon || 0;
+        }
+      }
 
       const netState = await Network.getNetworkStateAsync();
       const isWifi = netState.type === Network.NetworkStateType.WIFI;
@@ -1027,13 +1052,15 @@ export default function DashboardScreen() {
       const bssid = wifiInfo.bssid;
 
       if (hasStoreInfo) {
-        const distance = hasLocationInfo
-          ? getDistance(loc.coords.latitude, loc.coords.longitude, storeInfo.lat, storeInfo.lon)
-          : null;
+        const distance =
+          !shouldUseWifiOnly && hasLocationInfo && lat != null && lon != null
+            ? getDistance(lat, lon, storeInfo.lat, storeInfo.lon)
+            : null;
 
-        const swappedDistance = hasLocationInfo
-          ? getDistance(loc.coords.latitude, loc.coords.longitude, storeInfo.lon, storeInfo.lat)
-          : null;
+        const swappedDistance =
+          !shouldUseWifiOnly && hasLocationInfo && lat != null && lon != null
+            ? getDistance(lat, lon, storeInfo.lon, storeInfo.lat)
+            : null;
 
         const effectiveDistance =
           distance !== null && swappedDistance !== null
@@ -1052,18 +1079,25 @@ export default function DashboardScreen() {
             normalizedStoreSsid.includes(normalizedCurrentSsid));
 
         const isLocationMatched =
+          !shouldUseWifiOnly &&
           hasLocationInfo &&
           effectiveDistance !== null &&
           effectiveDistance <= RELAXED_DISTANCE_M;
 
         const isRoundedLocationMatched =
+          !shouldUseWifiOnly &&
           hasLocationInfo &&
-          roundCoord(loc.coords.latitude, ROUND_COMPARE_DECIMALS) ===
+          lat != null &&
+          lon != null &&
+          roundCoord(lat, ROUND_COMPARE_DECIMALS) ===
             roundCoord(storeInfo.lat, ROUND_COMPARE_DECIMALS) &&
-          roundCoord(loc.coords.longitude, ROUND_COMPARE_DECIMALS) ===
+          roundCoord(lon, ROUND_COMPARE_DECIMALS) ===
             roundCoord(storeInfo.lon, ROUND_COMPARE_DECIMALS);
 
-        if (!isWifiMatched && !isLocationMatched && !isRoundedLocationMatched) {
+        if (
+          (!shouldUseWifiOnly && !isWifiMatched && !isLocationMatched && !isRoundedLocationMatched) ||
+          (shouldUseWifiOnly && !isWifiMatched)
+        ) {
           setIsLoading(false);
           attendanceRequestRef.current = false;
           return Alert.alert(
@@ -1084,8 +1118,8 @@ export default function DashboardScreen() {
         const response = await api.post("/api/v1/attendances/clock-in", {
           storeId: currentStoreId,
           userId,
-          lat: loc.coords.latitude,
-          lon: loc.coords.longitude,
+          lat: lat ?? 0,
+          lon: lon ?? 0,
           wifiBssid: bssid || ssid || "",
           clockedAt,
         });
@@ -1168,8 +1202,8 @@ export default function DashboardScreen() {
           attendance_id: aid,
           userId,
           storeId: currentStoreId,
-          lat: loc.coords.latitude,
-          lon: loc.coords.longitude,
+          lat: lat ?? 0,
+          lon: lon ?? 0,
           clockedAt,
         });
 
@@ -1309,6 +1343,7 @@ export default function DashboardScreen() {
                 <Text style={styles.manualButtonText}>매뉴얼 보기</Text>
               </TouchableOpacity>
             </View>
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>이번 달 받을 월급은?</Text>
               <Text style={styles.salaryPeriod}>
