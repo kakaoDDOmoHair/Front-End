@@ -7,7 +7,6 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Linking,
   Modal,
   SafeAreaView,
@@ -15,13 +14,41 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Image as RNImage,
 } from "react-native";
+import { Image } from "expo-image";
 
 import Footer from "../../../components/common/Footer";
 import Header from "../../../components/common/Header";
 import api from "../../../constants/api";
 import { useNotificationCount } from "../../../hooks/useNotificationCount";
 import { styles } from "../../../styles/tabs/boss/Contract";
+
+// 서버에서 반환하는 localhost URL을 실제 서버 URL로 변환
+const BASE_URL = "https://queenliest-profamily-jarrett.ngrok-free.dev";
+const convertFileUrl = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+
+  console.log("🔗 원본 fileUrl:", url);
+
+  let convertedUrl = url;
+
+  // 10.0.2.2:8080 (Android 에뮬레이터 localhost) → 실제 서버 URL로 변환
+  if (url.includes("10.0.2.2:8080")) {
+    convertedUrl = url.replace("http://10.0.2.2:8080", BASE_URL);
+  }
+  // localhost:8080 → 실제 서버 URL로 변환
+  else if (url.includes("localhost:8080")) {
+    convertedUrl = url.replace("http://localhost:8080", BASE_URL);
+  }
+  // 127.0.0.1:8080 → 실제 서버 URL로 변환
+  else if (url.includes("127.0.0.1:8080")) {
+    convertedUrl = url.replace("http://127.0.0.1:8080", BASE_URL);
+  }
+
+  console.log("🔗 변환된 fileUrl:", convertedUrl);
+  return convertedUrl;
+};
 
 // ✅ 데이터 모델 정의
 export interface ContractData {
@@ -32,6 +59,9 @@ export interface ContractData {
   wage: number;
   isResigned: boolean;
   fileUrl?: string; // 서버 이미지/PDF 경로 (다운로드용)
+  createdAt?: string; // 등록일
+  startDate?: string; // 계약 시작일
+  endDate?: string; // 계약 종료일
 }
 
 // 알바생 정보 인터페이스
@@ -171,7 +201,19 @@ export default function ContractScreen() {
         if (item.status === "ENDED") statusText = "계약 종료";
 
         // API 응답에서 실제 이름 사용
-        const workerName = item.userName || item.workerName || item.name || "알바생";
+        const workerName =
+          item.userName || item.workerName || item.name || "알바생";
+
+        // workPeriod가 "2026-02-01 ~ 2026-12-31" 형태로 올 수 있음
+        let startDate = item.startDate || item.contractStartDate || null;
+        let endDate = item.endDate || item.contractEndDate || null;
+        if (item.workPeriod && typeof item.workPeriod === "string") {
+          const parts = item.workPeriod.split(" ~ ");
+          if (parts.length === 2) {
+            startDate = parts[0];
+            endDate = parts[1];
+          }
+        }
 
         return {
           id: String(item.contractId),
@@ -180,7 +222,10 @@ export default function ContractScreen() {
           status: statusText,
           wage: item.wage,
           isResigned: !isActive,
-          fileUrl: item.fileUrl || null,
+          fileUrl: convertFileUrl(item.fileUrl),
+          createdAt: item.createdAt || item.registeredAt || null,
+          startDate: startDate,
+          endDate: endDate,
         };
       });
 
@@ -228,8 +273,8 @@ export default function ContractScreen() {
     if (status !== "granted") return Alert.alert("알림", "권한이 필요합니다.");
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
+      allowsEditing: false,
+      quality: 0.3, // 파일 크기 제한을 위해 품질 낮춤
     });
     if (!result.canceled) {
       setSelectedImage(result.assets[0].uri);
@@ -241,8 +286,8 @@ export default function ContractScreen() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") return Alert.alert("알림", "권한이 필요합니다.");
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.7,
+      allowsEditing: false,
+      quality: 0.3, // 파일 크기 제한을 위해 품질 낮춤
     });
     if (!result.canceled) {
       setSelectedImage(result.assets[0].uri);
@@ -266,6 +311,11 @@ export default function ContractScreen() {
     setIsAnalyzing(true);
 
     try {
+      console.log("📤 계약서 업로드 시작");
+      console.log("📤 selectedImage:", selectedImage);
+      console.log("📤 storeId:", storeId);
+      console.log("📤 userId:", selectedStaff.userId);
+
       const formData = new FormData();
       formData.append("file", {
         uri: selectedImage,
@@ -279,6 +329,7 @@ export default function ContractScreen() {
         headers: {
           "Content-Type": "multipart/form-data",
         },
+        timeout: 60000, // 60초 타임아웃 (이미지 업로드는 시간이 걸릴 수 있음)
       });
 
       console.log("📡 /api/v1/contracts/scan API 응답:", response.data);
@@ -291,10 +342,14 @@ export default function ContractScreen() {
       setSelectedStaff(null);
       setShowStaffPicker(false);
       Alert.alert("성공", "계약서가 등록되었습니다.");
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ 계약서 등록 실패:", error);
+      console.error("❌ 에러 상세:", error.response?.data);
+      console.error("❌ 에러 상태:", error.response?.status);
       setIsAnalyzing(false);
-      Alert.alert("오류", "계약서 등록에 실패했습니다.");
+      const errorMsg =
+        error.response?.data?.message || "계약서 등록에 실패했습니다.";
+      Alert.alert("오류", errorMsg);
     }
   };
 
@@ -598,7 +653,7 @@ export default function ContractScreen() {
                         borderRadius: 25,
                         transform: [{ rotate: `${rotation}deg` }],
                       }}
-                      resizeMode="contain"
+                      contentFit="contain"
                     />
                   ) : (
                     <Text style={styles.guideText}>
@@ -667,16 +722,46 @@ export default function ContractScreen() {
         <View style={[styles.modalOverlay, { justifyContent: "flex-end" }]}>
           <View style={styles.documentContainer}>
             <Text style={styles.modalTitle}>근로계약서</Text>
+
+            {/* 계약 정보 표시 */}
+            <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
+              <Text
+                style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}
+              >
+                {selectedContract?.name} ({selectedContract?.location})
+              </Text>
+              {selectedContract?.createdAt && (
+                <Text style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
+                  📅 등록일: {selectedContract.createdAt.split("T")[0]}
+                </Text>
+              )}
+              {(selectedContract?.startDate || selectedContract?.endDate) && (
+                <Text style={{ fontSize: 14, color: "#666", marginBottom: 4 }}>
+                  📋 계약기간:{" "}
+                  {selectedContract?.startDate?.split("T")[0] || "미정"} ~{" "}
+                  {selectedContract?.endDate?.split("T")[0] || "미정"}
+                </Text>
+              )}
+              <Text style={{ fontSize: 14, color: "#666" }}>
+                💰 시급: {selectedContract?.wage?.toLocaleString()}원
+              </Text>
+            </View>
+
             <View style={styles.documentPreview}>
               <View style={styles.viewDashedBox}>
                 {selectedContract?.fileUrl ? (
                   <Image
-                    source={{ uri: selectedContract.fileUrl }}
+                    source={{
+                      uri: selectedContract.fileUrl,
+                      headers: {
+                        "ngrok-skip-browser-warning": "69420",
+                      },
+                    }}
                     style={{ width: "100%", height: "100%", borderRadius: 10 }}
-                    resizeMode="contain"
-                    onLoad={() => console.log("✅ 이미지 로드 성공")}
+                    contentFit="contain"
+                    onLoad={() => console.log("✅ 이미지 로드 성공:", selectedContract.fileUrl)}
                     onError={(e) =>
-                      console.log("❌ 이미지 로드 실패:", e.nativeEvent.error)
+                      console.log("❌ 이미지 로드 실패:", e.error, "URL:", selectedContract.fileUrl)
                     }
                   />
                 ) : (

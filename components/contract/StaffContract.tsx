@@ -17,7 +17,7 @@ export const StaffContract: React.FC<StaffContractProps> = ({ data, onViewOrigin
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: data.isResigned ? '#D3D3D3' : '#CB30E0' }]} />
           <Text style={styles.statusText}>
-            등록 완료 {data.isResigned ? data.resignedDate : (data.approvedDate || '2026-01-20')}
+            등록 완료 {data.isResigned ? data.resignedDate : (data.approvedDate || '')}
           </Text>
         </View>
       </View>
@@ -33,21 +33,25 @@ export const StaffContract: React.FC<StaffContractProps> = ({ data, onViewOrigin
             </View>
           </View>
           
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>근로시간</Text>
-            <View style={styles.infoValueBox}>
-              <Text style={styles.infoValue}>{data.workingHours}</Text>
+          {data.workingHours && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>근로시간</Text>
+              <View style={styles.infoValueBox}>
+                <Text style={styles.infoValue}>{data.workingHours}</Text>
+              </View>
             </View>
-          </View>
+          )}
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>계약기간</Text>
-            <View style={styles.infoValueBox}>
-              <Text style={styles.infoValue}>
-                {data.isResigned ? '계약 종료' : `${data.contractPeriod}`}
-              </Text>
+          {(data.contractPeriod || data.isResigned) && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>계약기간</Text>
+              <View style={styles.infoValueBox}>
+                <Text style={styles.infoValue}>
+                  {data.isResigned ? '계약 종료' : data.contractPeriod}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
         </View>
       </View>
 
