@@ -3,6 +3,31 @@ import { StyleSheet } from "react-native";
 export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
 
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  backButton: {
+    padding: 4,
+    minWidth: 36,
+  },
+  pageHeaderTitle: {
+    flex: 1,
+    fontSize: 25,
+    fontWeight: "700",
+    color: "#000",
+    textAlign: "center",
+  },
+  pageHeaderSpacer: {
+    minWidth: 36,
+  },
+
   // ✨ 상단 네비게이션 (헤더 대체)
   topNavigation: {
     flexDirection: "row",
@@ -80,18 +105,18 @@ export const styles = StyleSheet.create({
 
   // 정산 요청 완료 페이지
   successWrapper: { flex: 1 },
-  whiteHeader: { alignItems: "center", paddingTop: 20, paddingBottom: 30 },
-  checkImage: { width: 80, height: 80, marginBottom: 20 },
-  successMainTitle: { fontSize: 20, fontWeight: "bold", color: "#333" },
+  whiteHeader: { alignItems: "center", paddingTop: 40, paddingBottom: 30 },
+  checkImage: { width: 100, height: 100, marginBottom: 20 },
+  successMainTitle: { fontSize: 25, fontWeight: "bold", color: "#333" },
   contentArea: { paddingHorizontal: 25 },
   summaryCardGray: {
     backgroundColor: "#F5F5F5",
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 25,
     marginBottom: 30,
   },
   summaryTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: "bold",
     marginBottom: 15,
     color: "#333",
@@ -101,8 +126,8 @@ export const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  summaryLabel: { color: "#888", fontSize: 14 },
-  summaryValue: { fontWeight: "600", fontSize: 14, color: "#333" },
+  summaryLabel: { color: "#888", fontSize: 16 },
+  summaryValue: { fontWeight: "600", fontSize: 16, color: "#333" },
 
   // 세로형 타임라인
   verticalTimeline: { paddingLeft: 10, marginBottom: 30 },
@@ -128,10 +153,11 @@ export const styles = StyleSheet.create({
   },
   lineActive: { backgroundColor: "#A28BFF" },
   timelineRight: { flex: 1, paddingBottom: 20 },
-  timelineTitle: { fontSize: 15, fontWeight: "bold", color: "#BBB" },
-  timelineTitleActive: { fontSize: 15, fontWeight: "bold", color: "#333" },
-  timelineDate: { fontSize: 12, color: "#A28BFF", marginTop: 3 },
-  timelineDesc: { fontSize: 12, color: "#AAA", marginTop: 3 },
+  timelineTitle: { fontSize: 18, fontWeight: "bold", color: "#BBB" },
+  timelineTitleActive: { fontSize: 18, fontWeight: "bold", color: "#333" },
+  timelineDate: { fontSize: 15, color: "#A28BFF", marginTop: 3 },
+  timelineDesc: { fontSize: 15, color: "#AAA", marginTop: 3 },
+  timelineDescActive: { fontSize: 15, color: "#A28BFF", marginTop: 3 },
 
   homeBtn: {
     backgroundColor: "#EBE6FF",
@@ -139,5 +165,5 @@ export const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
   },
-  homeBtnText: { color: "#000", fontWeight: "bold", fontSize: 16 },
+  homeBtnText: { color: "#000", fontWeight: "bold", fontSize: 20 },
 });

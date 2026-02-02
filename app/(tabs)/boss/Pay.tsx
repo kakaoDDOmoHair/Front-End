@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import * as SecureStore from "expo-secure-store";
+import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -67,13 +69,51 @@ const Pay: React.FC = () => {
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1;
 
+  const getAuthHeader = async () => {
+    try {
+      let token = await SecureStore.getItemAsync("user_token");
+      if (!token) token = await AsyncStorage.getItem("user_token");
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
   // --- [1. 초기 데이터 로드] ---
   const loadInitialData = async (
     keepSelectedUserId?: number,
   ): Promise<MonthlyWorker[]> => {
     try {
       setLoading(true);
-      const storedStoreId = await AsyncStorage.getItem("storeId");
+      const headers = await getAuthHeader();
+      let storedStoreId = await AsyncStorage.getItem("storeId");
+      console.log("📋 [boss/pay] storedStoreId (pre)", storedStoreId);
+      if (!storedStoreId) {
+        const username = await AsyncStorage.getItem("username");
+        if (username) {
+          try {
+            const meRes = await api.get("/api/v1/users/me", {
+              params: { username },
+              headers,
+            });
+            const me = meRes.data?.data ?? meRes.data;
+            console.log("📋 [boss/pay] users/me", me);
+            const sid =
+              me?.storeId ??
+              me?.store?.storeId ??
+              me?.storeInfo?.storeId ??
+              me?.store_info?.storeId ??
+              null;
+            if (sid != null) {
+              storedStoreId = String(sid);
+              await AsyncStorage.setItem("storeId", storedStoreId);
+            }
+          } catch (e) {
+            // ignore fallback failure
+          }
+        }
+      }
+      console.log("📋 [boss/pay] storedStoreId (final)", storedStoreId);
       if (!storedStoreId) return [];
 
       const response = await api.get("/api/v1/salary/monthly", {
@@ -82,34 +122,83 @@ const Pay: React.FC = () => {
           year: currentYear,
           month: currentMonth,
         },
+        headers,
       });
 
       const dataRoot = response.data.data || response.data;
-      const finalWorkers = dataRoot.payments || dataRoot.workers || [];
+      console.log("📋 [boss/pay] salary/monthly raw", response.data);
+      const rawWorkers =
+        dataRoot?.payments ||
+        dataRoot?.workers ||
+        dataRoot?.list ||
+        dataRoot?.items ||
+        dataRoot?.content ||
+        dataRoot?.data?.payments ||
+        dataRoot?.data?.workers ||
+        dataRoot?.data?.list ||
+        dataRoot?.data?.items ||
+        dataRoot?.data?.content ||
+        [];
+      const finalWorkers = Array.isArray(rawWorkers)
+        ? rawWorkers
+        : rawWorkers
+          ? [rawWorkers]
+          : [];
+      let normalizedWorkers = finalWorkers;
+      if (normalizedWorkers.length === 0) {
+        try {
+          const workersRes = await api.get(
+            `/api/v1/stores/${storedStoreId}/workers`,
+            { headers },
+          );
+          const workersRoot = workersRes.data?.data ?? workersRes.data;
+          const workersList =
+            workersRoot?.workers ??
+            workersRoot?.list ??
+            workersRoot?.items ??
+            workersRoot?.content ??
+            workersRoot;
+          const rawList = Array.isArray(workersList)
+            ? workersList
+            : workersList
+              ? [workersList]
+              : [];
+          normalizedWorkers = rawList.map((w: any) => ({
+            userId: w?.userId ?? w?.id ?? 0,
+            name: w?.name ?? w?.workerName ?? w?.userName ?? "알바생",
+            amount: 0,
+            status: "WAITING",
+            accountId: w?.accountId ?? null,
+            paymentId: w?.paymentId ?? null,
+          }));
+        } catch (e) {
+          // ignore fallback
+        }
+      }
       const totalAmount = dataRoot.totalAmount ?? 0;
-      const employeeCount = dataRoot.employeeCount ?? finalWorkers.length;
+      const employeeCount = dataRoot.employeeCount ?? normalizedWorkers.length;
 
       console.log("📋 [salary/monthly]", {
         totalAmount,
         employeeCount,
-        payments: finalWorkers,
+        payments: normalizedWorkers,
       });
-      finalWorkers.forEach((w: any, i: number) => {
+      normalizedWorkers.forEach((w: any, i: number) => {
         console.log(
           `📋 [${i}] ${w.name} status=${w.status} paymentId=${w.paymentId} accountId=${w.accountId}`,
         );
       });
-      setWorkerList(finalWorkers);
+      setWorkerList(normalizedWorkers);
 
-      if (finalWorkers.length > 0) {
+      if (normalizedWorkers.length > 0) {
         const kept = keepSelectedUserId
-          ? finalWorkers.find(
+          ? normalizedWorkers.find(
               (w: any) => Number(w.userId) === Number(keepSelectedUserId),
             )
           : null;
-        setSelectedWorker(kept ?? finalWorkers[0]);
+        setSelectedWorker(kept ?? normalizedWorkers[0]);
       }
-      return finalWorkers;
+      return normalizedWorkers;
     } catch (error) {
       console.error("❌ 초기 로드 실패:", error);
       return [];
@@ -121,6 +210,12 @@ const Pay: React.FC = () => {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadInitialData(selectedWorker?.userId);
+    }, [selectedWorker?.userId]),
+  );
 
   useEffect(() => {
     if (selectedWorker) {
