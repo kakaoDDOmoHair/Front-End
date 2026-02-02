@@ -60,6 +60,10 @@ export default function ManualScreen() {
       setLoading(true);
       const token = await getAuthToken();
       const username = await getUsername();
+      const storedStoreIdRaw = await AsyncStorage.getItem("storeId");
+      const storedStoreId = storedStoreIdRaw
+        ? Number(storedStoreIdRaw)
+        : null;
 
       if (!token || !username) {
         Alert.alert("알림", "로그인 정보가 없습니다.");
@@ -72,7 +76,13 @@ export default function ManualScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const storeId = userRes.data.data?.storeId || userRes.data.storeId;
+      const data = userRes.data?.data || userRes.data;
+      const storeId =
+        data?.storeId ||
+        data?.store?.storeId ||
+        data?.storeInfo?.storeId ||
+        data?.store_info?.storeId ||
+        storedStoreId;
 
       if (!storeId) {
         Alert.alert("알림", "연결된 근무지(매장) 정보가 없습니다.");
@@ -171,7 +181,7 @@ export default function ManualScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-      <Header notificationCount={notificationCount} />
+      {!selectedManual && <Header notificationCount={notificationCount} />}
       {loading ? (
         <ActivityIndicator size="large" color="#E0D5FF" style={{ flex: 1 }} />
       ) : (
@@ -181,7 +191,7 @@ export default function ManualScreen() {
           onSelect={handleSelectManual}
         />
       )}
-      <Footer />
+      {!selectedManual && <Footer />}
     </SafeAreaView>
   );
 }

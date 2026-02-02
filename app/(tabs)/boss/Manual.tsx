@@ -207,7 +207,7 @@ export default function ManualScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-      <Header notificationCount={notificationCount} />
+      {!selectedManual && <Header notificationCount={notificationCount} />}
       {loading ? (
         <ActivityIndicator size="large" color="#E0D5FF" style={{ flex: 1 }} />
       ) : (
@@ -223,7 +223,7 @@ export default function ManualScreen() {
           onDelete={handleDelete}
         />
       )}
-      <Footer />
+      {!selectedManual && <Footer />}
     </SafeAreaView>
   );
 }
