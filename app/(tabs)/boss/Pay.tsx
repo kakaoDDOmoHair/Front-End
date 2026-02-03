@@ -325,6 +325,7 @@ const Pay: React.FC = () => {
 
   // --- [4. 급여 정산 실행] ---
   // execute → WAITING 상태로 정산 내역만 생성 (입금 처리 안 함).
+  // execute 성공 후 바로 계좌 복사 모달로 이동 (Alert 제거).
   // "정산 완료" 메시지·계좌 모달은 completeTransfer(정산 완료 처리 시)에서만.
   const handleExecuteSalary = async (worker: any) => {
     try {
@@ -339,13 +340,37 @@ const Pay: React.FC = () => {
         year: currentYear,
         month: currentMonth,
       });
-      const data = res.data?.data ?? res.data;
-      const message =
-        data?.message ||
-        "[정산 내역 생성] 알바생의 급여 정산 내역이 생성되었습니다.";
 
-      await loadInitialData(worker.userId);
-      Alert.alert("알림", message);
+      // execute 성공 후 데이터 갱신
+      const updatedWorkers = await loadInitialData(worker.userId);
+      
+      // 업데이트된 worker 데이터에서 paymentId 찾기
+      const updatedWorker = updatedWorkers.find(
+        (w: any) => Number(w.userId) === Number(worker.userId || worker.id)
+      );
+      
+      if (updatedWorker?.paymentId) {
+        // paymentId가 있으면 바로 계좌 복사 모달로 이동
+        const accountData = await fetchAccountInfo(updatedWorker.paymentId);
+        
+        if (accountData) {
+          // 복호화된 진짜 계좌번호를 클립보드에 복사
+          await Clipboard.setStringAsync(accountData.account);
+
+          setActiveTransferItem({
+            ...updatedWorker,
+            bank: accountData.bank,
+            account: accountData.account,
+            holder: accountData.holder,
+          });
+          setShowCopyModal(true);
+        } else {
+          Alert.alert("오류", "상세 계좌 정보를 불러올 수 없습니다.");
+        }
+      } else {
+        // paymentId가 없으면 (드물지만) 에러 처리
+        Alert.alert("알림", "정산 내역이 생성되었지만 계좌 정보를 불러올 수 없습니다.");
+      }
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.message || "정산 처리 중 오류가 발생했습니다.";
